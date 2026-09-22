@@ -114,11 +114,18 @@ func problem(w http.ResponseWriter, status int, code string, issue *kana.Issue) 
 }
 
 // viewerIP reads the address out of a CloudFront-Viewer-Address value, which
-// carries a port: "198.51.100.7:52011" or "[2001:db8::1]:52011". Unbracketed
-// IPv6 and a bare address without a port are accepted too, since the exact
-// shape is not guaranteed.
+// carries a port: "198.51.100.7:52011" or "[2001:db8::1]:52011". An unbracketed
+// IPv6 value is handled too, since the exact shape is not guaranteed. A value
+// this cannot resolve is dropped, leaving the shared RemoteAddr bucket, which
+// is restrictive rather than exploitable.
 func viewerIP(v string) string {
 	if v == "" {
+		return ""
+	}
+	if !strings.Contains(v, ":") { // an address carrying no port
+		if net.ParseIP(v) != nil {
+			return v
+		}
 		return ""
 	}
 	if host, _, e := net.SplitHostPort(v); e == nil {
@@ -127,9 +134,9 @@ func viewerIP(v string) string {
 		}
 		return ""
 	}
-	if net.ParseIP(v) != nil {
-		return v
-	}
+	// Unbracketed IPv6 with a port. Never take the whole value as the address:
+	// a port that is also a valid hex group ("2001:db8::1:443") parses, and
+	// keying on it would hand one viewer a fresh bucket per connection.
 	if i := strings.LastIndex(v, ":"); i > 0 {
 		if host := v[:i]; net.ParseIP(host) != nil {
 			return host

@@ -13,7 +13,10 @@ TerraformはECR、非公開S3、Lambda arm64、Function URL（AWS_IAM）、OAC�
 
    ```bash
    cid=$(docker create <ECR URI>:<版>)
-   docker cp "$cid:/app/web" ./release-web && docker rm "$cid"
+   # 取り出し先は毎回作り直す。既存のディレクトリへ docker cp すると中身を
+   # 置き換えず release-web/web として入れ子になり、前回の版を同期してしまう。
+   rm -rf ./release-web && mkdir -p ./release-web
+   docker cp "$cid:/app/web/." ./release-web && docker rm "$cid"
    aws s3 sync ./release-web/assets "s3://$SPA_BUCKET/assets/" \
      --cache-control 'public,max-age=31536000,immutable'
    aws s3 cp ./release-web/index.html "s3://$SPA_BUCKET/index.html" --cache-control 'no-cache'

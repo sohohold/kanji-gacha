@@ -223,8 +223,14 @@ func TestViewerIP(t *testing.T) {
 		{"198.51.100.7:52011", "198.51.100.7"},
 		{"[2001:db8::1]:52011", "2001:db8::1"},
 		{"2001:db8::1:52011", "2001:db8::1"},
+		// A port that is also a valid hex group must not be kept: the whole
+		// value parses as an address, and the port changes per connection.
+		{"2001:db8::1:443", "2001:db8::1"},
+		{"2001:db8::1:80", "2001:db8::1"},
 		{"198.51.100.7", "198.51.100.7"},
-		{"2001:db8::1", "2001:db8::1"},
+		// Unbracketed IPv6 with no port cannot be told apart from one with a
+		// port, so it is dropped rather than keyed ambiguously.
+		{"2001:db8::1", ""},
 		{"", ""},
 		{"not-an-address", ""},
 		{"example.test:80", ""},
@@ -247,5 +253,22 @@ func TestRateLimitIPv6Viewer(t *testing.T) {
 	}
 	if _, ok := s.ips["2001:db8::1"]; !ok {
 		t.Fatalf("rate limit keyed on %v, not the viewer address", s.ips)
+	}
+}
+
+// A viewer must not earn a fresh bucket by reconnecting from a new source port.
+func TestRateLimitIgnoresViewerPort(t *testing.T) {
+	s := setup(t)
+	s.TrustCloudFront = true
+	for _, addr := range []string{"2001:db8::1:443", "2001:db8::1:80", "2001:db8::1:52011"} {
+		r := httptest.NewRequest("POST", "/api/v1/glyphs", nil)
+		r.Header.Set("CloudFront-Viewer-Address", addr)
+		s.allow(r)
+	}
+	if len(s.ips) != 1 {
+		t.Fatalf("one viewer took %d buckets: %v", len(s.ips), s.ips)
+	}
+	if _, ok := s.ips["2001:db8::1"]; !ok {
+		t.Fatalf("rate limit keyed on %v", s.ips)
 	}
 }
