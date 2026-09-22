@@ -126,12 +126,7 @@ function App() {
     }
   }
   useEffect(() => {
-    if (
-      !g ||
-      g.legend === "biang" ||
-      !replay ||
-      matchMedia("(prefers-reduced-motion: reduce)").matches
-    )
+    if (!g || !replay || matchMedia("(prefers-reduced-motion: reduce)").matches)
       return;
     const paths = card.current?.querySelectorAll<SVGPathElement>("path");
     const animations: Animation[] = [];
@@ -340,10 +335,7 @@ function App() {
             )}
             {g && (
               <div className="result-actions">
-                <button
-                  onClick={() => setReplay((x) => x + 1)}
-                  disabled={busy || g.legend === "biang"}
-                >
+                <button onClick={() => setReplay((x) => x + 1)} disabled={busy}>
                   ▷ 描画を再生
                 </button>
                 <button className="share" onClick={share} disabled={busy}>
@@ -401,7 +393,7 @@ function App() {
           </a>
           （<a href="https://www.edrdg.org/edrdg/licence.html">CC BY-SA 4.0</a>
           ）<br />
-          フォント・ビャン字形：
+          フォント：
           <a href="https://github.com/notofonts/noto-cjk">Noto CJK © Adobe</a>（
           <a href="https://openfontlicense.org/">SIL OFL 1.1</a>）
         </p>
@@ -412,7 +404,7 @@ function App() {
           </p>
           <p>
             通常枠：N 70% / R 20% / SR 7% / SSR 2.5% / UR
-            0.5%。特殊枠は別抽選。幽霊文字枠は0.3%、日本時間2:00〜2:30は3%。「タイト」「ビャン」は固定の特殊枠です。
+            0.5%。特殊枠は別抽選。幽霊文字枠は0.3%、日本時間2:00〜2:30は3%。「タイト」は固定の特殊枠です。
           </p>
           <p>
             生成SVGはKanjiVGを再配置した改変物です。配布時は出典・変更内容・ライセンスを引き継いでください。保存はサービスの運用中に限り、無期限の提供を保証するものではありません。
