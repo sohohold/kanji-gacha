@@ -116,3 +116,87 @@ func TestErrors(t *testing.T) {
 		t.Fatal("unsaved success", w.Code, w.Body.String())
 	}
 }
+
+// conflictStore simulates the loser of a concurrent first OGP request: the
+// conditional PUT is rejected while the winner's object is not yet readable.
+type conflictStore struct {
+	store.Store
+	png string
+}
+
+func (c conflictStore) Get(ctx context.Context, k string) ([]byte, error) {
+	if k == c.png {
+		return nil, store.ErrNotFound
+	}
+	return c.Store.Get(ctx, k)
+}
+func (c conflictStore) PutIfAbsent(ctx context.Context, k string, b []byte, ct string) error {
+	if k == c.png {
+		return store.ErrExists
+	}
+	return c.Store.PutIfAbsent(ctx, k, b, ct)
+}
+
+func TestOGPConflictReturnsImage(t *testing.T) {
+	s := setup(t)
+	w := call(s, "POST", "/api/v1/glyphs", `{"mode":"on","reading":"セイ"}`)
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var g model.Glyph
+	if e := json.Unmarshal(w.Body.Bytes(), &g); e != nil {
+		t.Fatal(e)
+	}
+	s.Store = conflictStore{s.Store, g.OGPKey}
+	w = call(s, "GET", "/og/"+g.ID+".png", "")
+	if w.Code != 200 {
+		t.Fatalf("losing the PUT race must still serve the image, got %d %s", w.Code, w.Body.String())
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "image/png" {
+		t.Fatalf("content type %q", ct)
+	}
+	if !bytes.HasPrefix(w.Body.Bytes(), []byte("\x89PNG\r\n\x1a\n")) {
+		t.Fatal("body is not a PNG")
+	}
+}
+
+func TestMethodNotAllowedIsProblem(t *testing.T) {
+	s := setup(t)
+	for _, path := range []string{"/g/" + strings.Repeat("a", 32), "/og/" + strings.Repeat("a", 32) + ".png", "/"} {
+		w := call(s, "POST", path, "")
+		if w.Code != 405 {
+			t.Errorf("%s: status %d", path, w.Code)
+		}
+		if ct := w.Header().Get("Content-Type"); ct != "application/problem+json" {
+			t.Errorf("%s: content type %q", path, ct)
+		}
+		if cc := w.Header().Get("Cache-Control"); cc != "no-store" {
+			t.Errorf("%s: cache control %q", path, cc)
+		}
+		if a := w.Header().Get("Allow"); a != "GET, HEAD" {
+			t.Errorf("%s: allow %q", path, a)
+		}
+	}
+}
+
+func TestRateLimitUsesViewerAddress(t *testing.T) {
+	s := setup(t)
+	s.TrustCloudFront = true
+	r := httptest.NewRequest("POST", "/api/v1/glyphs", nil)
+	r.Header.Set("X-Forwarded-For", "203.0.113.9, 70.132.1.1")
+	r.Header.Set("CloudFront-Viewer-Address", "198.51.100.7:52011")
+	for i := 0; i < 10; i++ {
+		if !s.allow(r) {
+			t.Fatalf("viewer 198.51.100.7 exhausted after %d requests", i)
+		}
+	}
+	if _, ok := s.ips["198.51.100.7"]; !ok {
+		t.Fatalf("rate limit keyed on %v, not the viewer address", s.ips)
+	}
+	other := httptest.NewRequest("POST", "/api/v1/glyphs", nil)
+	other.Header.Set("X-Forwarded-For", "203.0.113.9, 70.132.1.1")
+	other.Header.Set("CloudFront-Viewer-Address", "198.51.100.8:41000")
+	if !s.allow(other) {
+		t.Fatal("a second viewer behind the same edge must have its own bucket")
+	}
+}

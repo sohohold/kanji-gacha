@@ -75,6 +75,16 @@ func (s *Server) Handler() http.Handler {
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Write(s.index)
 	})
+	// Without this the default mux answers a non-GET /g/* or /og/* with a
+	// text/plain 405 that carries no Cache-Control.
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", "GET, HEAD")
+			problem(w, 405, "method_not_allowed", nil)
+			return
+		}
+		problem(w, 404, "not_found", nil)
+	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
@@ -96,10 +106,14 @@ func (s *Server) allow(r *http.Request) bool {
 	if e != nil {
 		ip = r.RemoteAddr
 	}
-	if s.TrustCloudFront { // CloudFront appends the viewer address; do not trust client-supplied leading entries.
-		xs := strings.Split(r.Header.Get("X-Forwarded-For"), ",")
-		if len(xs) > 0 {
-			v := strings.TrimSpace(xs[len(xs)-1])
+	if s.TrustCloudFront {
+		// CloudFront-Viewer-Address is added by CloudFront itself and cannot be
+		// set by the viewer, unlike X-Forwarded-For whose entries depend on what
+		// the Function URL appends. The value is "address:port", IPv6 included.
+		if v := r.Header.Get("CloudFront-Viewer-Address"); v != "" {
+			if i := strings.LastIndex(v, ":"); i > 0 {
+				v = v[:i]
+			}
 			if net.ParseIP(v) != nil {
 				ip = v
 			}
@@ -270,7 +284,9 @@ func (s *Server) og(w http.ResponseWriter, r *http.Request) {
 		problem(w, 400, "invalid_id", nil)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	// The request budget covers the S3 round trips; only the rendering itself is
+	// held to the 3s limit.
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
 	r = r.WithContext(ctx)
 	key := "og/" + id + ".png"
@@ -280,11 +296,18 @@ func (s *Server) og(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-		b, e = render.PNG(ctx, g)
+		rctx, rcancel := context.WithTimeout(ctx, 3*time.Second)
+		b, e = render.PNG(rctx, g)
+		rcancel()
 		if e == nil {
 			e = s.Store.PutIfAbsent(ctx, key, b, "image/png")
 			if errors.Is(e, store.ErrExists) {
-				b, e = s.Store.Get(ctx, key)
+				// Rendering is deterministic, so the copy in hand matches the
+				// stored one; keep it if the winner's write is not readable yet.
+				if stored, se := s.Store.Get(ctx, key); se == nil {
+					b = stored
+				}
+				e = nil
 			}
 		}
 	}
