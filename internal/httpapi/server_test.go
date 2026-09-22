@@ -179,6 +179,40 @@ func TestMethodNotAllowedIsProblem(t *testing.T) {
 	}
 }
 
+// A wrong method on an API resource is a 405 naming the methods it routes, not
+// a 404 that denies the resource exists.
+func TestAPIMethodNotAllowed(t *testing.T) {
+	s := setup(t)
+	id := strings.Repeat("a", 32)
+	for _, c := range []struct{ method, path, allow string }{
+		{"POST", "/api/v1/glyphs/" + id, "GET, HEAD"},
+		{"DELETE", "/api/v1/glyphs/" + id, "GET, HEAD"},
+		{"GET", "/api/v1/glyphs", "POST"},
+		{"DELETE", "/api/v1/glyphs", "POST"},
+	} {
+		w := call(s, c.method, c.path, "")
+		if w.Code != 405 {
+			t.Errorf("%s %s: status %d", c.method, c.path, w.Code)
+		}
+		if a := w.Header().Get("Allow"); a != c.allow {
+			t.Errorf("%s %s: allow %q, want %q", c.method, c.path, a, c.allow)
+		}
+		if ct := w.Header().Get("Content-Type"); ct != "application/problem+json" {
+			t.Errorf("%s %s: content type %q", c.method, c.path, ct)
+		}
+	}
+	// An API path with no route at all stays a 404.
+	for _, method := range []string{"GET", "POST"} {
+		w := call(s, method, "/api/v1/unknown", "")
+		if w.Code != 404 {
+			t.Errorf("%s /api/v1/unknown: status %d", method, w.Code)
+		}
+		if a := w.Header().Get("Allow"); a != "" {
+			t.Errorf("%s /api/v1/unknown: advertises Allow %q", method, a)
+		}
+	}
+}
+
 func TestRateLimitUsesViewerAddress(t *testing.T) {
 	s := setup(t)
 	s.TrustCloudFront = true

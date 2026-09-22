@@ -12,6 +12,7 @@ TerraformはECR、非公開S3、Lambda arm64、Function URL（AWS_IAM）、OAC�
 6. 共有HTMLはLambdaがイメージ内の `/app/web/index.html` を返すため、S3へ同期するアセットは必ず同じイメージから取り出す。手元の `web/dist` を同期するとハッシュ付きファイル名が食い違い、共有ページのJS/CSSが403になる。
 
    ```bash
+   SPA_BUCKET=$(terraform -chdir=infra output -raw spa_bucket)
    cid=$(docker create <ECR URI>:<版>)
    # 取り出し先は毎回作り直す。既存のディレクトリへ docker cp すると中身を
    # 置き換えず release-web/web として入れ子になり、前回の版を同期してしまう。

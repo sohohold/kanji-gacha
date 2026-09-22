@@ -60,7 +60,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/glyphs/{id}", s.get)
 	mux.HandleFunc("GET /g/{id}", s.share)
 	mux.HandleFunc("GET /og/{image}", s.og)
-	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { problem(w, 404, "not_found", nil) })
 	mux.Handle("GET /assets/", http.FileServer(http.Dir(s.WebDir)))
 	mux.HandleFunc("GET /kanji-ui.otf", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "public, max-age=86400")
@@ -75,18 +74,19 @@ func (s *Server) Handler() http.Handler {
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Write(s.index)
 	})
-	// Registering "/" stops the default mux from answering a non-GET /g/* or
-	// /og/* with a text/plain 405 that carries no Cache-Control, so answer it
-	// here instead. Only a path that a GET would actually reach gets the 405;
-	// anything else is a missing resource.
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet && r.Method != http.MethodHead && servesGet(mux, r) {
-			w.Header().Set("Allow", "GET, HEAD")
+	// These stop the default mux from answering a wrong method with a
+	// text/plain 405 that carries no Cache-Control. A path some other method
+	// routes is a wrong method; anything else is a missing resource.
+	fallback := func(w http.ResponseWriter, r *http.Request) {
+		if allow := routedMethods(mux, r); len(allow) > 0 {
+			w.Header().Set("Allow", strings.Join(allow, ", "))
 			problem(w, 405, "method_not_allowed", nil)
 			return
 		}
 		problem(w, 404, "not_found", nil)
-	})
+	}
+	mux.HandleFunc("/api/", fallback)
+	mux.HandleFunc("/", fallback)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
@@ -94,13 +94,23 @@ func (s *Server) Handler() http.Handler {
 	})
 }
 
-// servesGet reports whether a GET for this path would reach a real route rather
-// than the catch-all, which separates a wrong method from a missing resource.
-func servesGet(mux *http.ServeMux, r *http.Request) bool {
-	probe := r.Clone(r.Context())
-	probe.Method = http.MethodGet
-	_, pattern := mux.Handler(probe)
-	return pattern != "" && pattern != "/"
+// fallbackPatterns are the two catch-alls; a path that only they match has no
+// route of its own.
+var fallbackPatterns = map[string]bool{"/": true, "/api/": true}
+
+// routedMethods reports which methods reach a real route for this path, so a
+// wrong-method response can name them and a path with no route stays a 404.
+// Asking the mux keeps this from drifting as routes change.
+func routedMethods(mux *http.ServeMux, r *http.Request) []string {
+	var out []string
+	for _, m := range []string{http.MethodGet, http.MethodHead, http.MethodPost} {
+		probe := r.Clone(r.Context())
+		probe.Method = m
+		if _, pattern := mux.Handler(probe); pattern != "" && !fallbackPatterns[pattern] {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 func problem(w http.ResponseWriter, status int, code string, issue *kana.Issue) {
 	w.Header().Set("Content-Type", "application/problem+json")
