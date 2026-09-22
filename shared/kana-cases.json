@@ -421,5 +421,49 @@
     "valid": false,
     "code": "enum",
     "field": "mode"
+  },
+  {
+    "name": "kanji-over-length",
+    "input": {
+      "mode": "on",
+      "reading": "漢字漢字漢字",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "character",
+    "field": "reading"
+  },
+  {
+    "name": "latin-over-length",
+    "input": {
+      "mode": "on",
+      "reading": "abcdef",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "character",
+    "field": "reading"
+  },
+  {
+    "name": "okuri-kanji-on",
+    "input": {
+      "mode": "on",
+      "reading": "セイ",
+      "okurigana": "漢"
+    },
+    "valid": false,
+    "code": "character",
+    "field": "okurigana"
+  },
+  {
+    "name": "okuri-over-length-kanji",
+    "input": {
+      "mode": "kun",
+      "reading": "ア",
+      "okurigana": "漢漢漢漢"
+    },
+    "valid": false,
+    "code": "character",
+    "field": "okurigana"
   }
 ]
