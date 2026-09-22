@@ -125,8 +125,15 @@ function App() {
         setNotice("リンクをコピーできませんでした。下のURLをご利用ください。");
     }
   }
+  // Records saved before the Biang slot was removed hold a filled outline with no stroke order.
+  const replayable = g?.legend !== "biang";
   useEffect(() => {
-    if (!g || !replay || matchMedia("(prefers-reduced-motion: reduce)").matches)
+    if (
+      !g ||
+      !replayable ||
+      !replay ||
+      matchMedia("(prefers-reduced-motion: reduce)").matches
+    )
       return;
     const paths = card.current?.querySelectorAll<SVGPathElement>("path");
     const animations: Animation[] = [];
@@ -335,7 +342,10 @@ function App() {
             )}
             {g && (
               <div className="result-actions">
-                <button onClick={() => setReplay((x) => x + 1)} disabled={busy}>
+                <button
+                  onClick={() => setReplay((x) => x + 1)}
+                  disabled={busy || !replayable}
+                >
                   ▷ 描画を再生
                 </button>
                 <button className="share" onClick={share} disabled={busy}>
