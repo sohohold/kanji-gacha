@@ -38,6 +38,12 @@ function message(e: unknown): string {
     if (p.errors?.[0]) return issueMessage(p.errors[0]);
     if (p.status === 429) return "少し待ってから、もう一度回してください。";
     if (p.status === 404) return "生成結果が見つかりませんでした。";
+    if (p.status === 400) return "共有URLまたは入力内容を確認してください。";
+    if (p.status === 405) return "この操作には対応していません。";
+    if (p.status === 413) return "入力が長すぎます。短くしてお試しください。";
+    if (p.status === 415)
+      return "送信形式が不正です。ページを再読み込みしてください。";
+    if (p.status === 422) return "入力内容を確認してください。";
     if (p.code === "generation_paused")
       return "ただいま生成をお休みしています。";
     if (p.status === 503)
