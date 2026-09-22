@@ -140,7 +140,7 @@ export interface components {
         };
     };
     responses: {
-        /** @description Input 400/413/415/422, not found 404, rate limit 429, or unavailable 503 */
+        /** @description Input 400/413/415/422, not found 404, method not allowed 405, rate limit 429, or unavailable 503 */
         Problem: {
             headers: {
                 [name: string]: unknown;

@@ -60,7 +60,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/glyphs/{id}", s.get)
 	mux.HandleFunc("GET /g/{id}", s.share)
 	mux.HandleFunc("GET /og/{image}", s.og)
-	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { problem(w, 404, "not_found", nil) })
 	mux.Handle("GET /assets/", http.FileServer(http.Dir(s.WebDir)))
 	mux.HandleFunc("GET /kanji-ui.otf", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "public, max-age=86400")
@@ -75,11 +74,43 @@ func (s *Server) Handler() http.Handler {
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Write(s.index)
 	})
+	// These stop the default mux from answering a wrong method with a
+	// text/plain 405 that carries no Cache-Control. A path some other method
+	// routes is a wrong method; anything else is a missing resource.
+	fallback := func(w http.ResponseWriter, r *http.Request) {
+		if allow := routedMethods(mux, r); len(allow) > 0 {
+			w.Header().Set("Allow", strings.Join(allow, ", "))
+			problem(w, 405, "method_not_allowed", nil)
+			return
+		}
+		problem(w, 404, "not_found", nil)
+	}
+	mux.HandleFunc("/api/", fallback)
+	mux.HandleFunc("/", fallback)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		mux.ServeHTTP(w, r)
 	})
+}
+
+// fallbackPatterns are the two catch-alls; a path that only they match has no
+// route of its own.
+var fallbackPatterns = map[string]bool{"/": true, "/api/": true}
+
+// routedMethods reports which methods reach a real route for this path, so a
+// wrong-method response can name them and a path with no route stays a 404.
+// Asking the mux keeps this from drifting as routes change.
+func routedMethods(mux *http.ServeMux, r *http.Request) []string {
+	var out []string
+	for _, m := range []string{http.MethodGet, http.MethodHead, http.MethodPost} {
+		probe := r.Clone(r.Context())
+		probe.Method = m
+		if _, pattern := mux.Handler(probe); pattern != "" && !fallbackPatterns[pattern] {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 func problem(w http.ResponseWriter, status int, code string, issue *kana.Issue) {
 	w.Header().Set("Content-Type", "application/problem+json")
@@ -91,18 +122,49 @@ func problem(w http.ResponseWriter, status int, code string, issue *kana.Issue) 
 	}
 	json.NewEncoder(w).Encode(v)
 }
+
+// viewerIP reads the address out of a CloudFront-Viewer-Address value, which
+// carries a port: "198.51.100.7:52011" or "[2001:db8::1]:52011". An unbracketed
+// IPv6 value is handled too, since the exact shape is not guaranteed. A value
+// this cannot resolve is dropped, leaving the shared RemoteAddr bucket, which
+// is restrictive rather than exploitable.
+func viewerIP(v string) string {
+	if v == "" {
+		return ""
+	}
+	if !strings.Contains(v, ":") { // an address carrying no port
+		if net.ParseIP(v) != nil {
+			return v
+		}
+		return ""
+	}
+	if host, _, e := net.SplitHostPort(v); e == nil {
+		if net.ParseIP(host) != nil {
+			return host
+		}
+		return ""
+	}
+	// Unbracketed IPv6 with a port. Never take the whole value as the address:
+	// a port that is also a valid hex group ("2001:db8::1:443") parses, and
+	// keying on it would hand one viewer a fresh bucket per connection.
+	if i := strings.LastIndex(v, ":"); i > 0 {
+		if host := v[:i]; net.ParseIP(host) != nil {
+			return host
+		}
+	}
+	return ""
+}
 func (s *Server) allow(r *http.Request) bool {
 	ip, _, e := net.SplitHostPort(r.RemoteAddr)
 	if e != nil {
 		ip = r.RemoteAddr
 	}
-	if s.TrustCloudFront { // CloudFront appends the viewer address; do not trust client-supplied leading entries.
-		xs := strings.Split(r.Header.Get("X-Forwarded-For"), ",")
-		if len(xs) > 0 {
-			v := strings.TrimSpace(xs[len(xs)-1])
-			if net.ParseIP(v) != nil {
-				ip = v
-			}
+	if s.TrustCloudFront {
+		// CloudFront-Viewer-Address is added by CloudFront itself and cannot be
+		// set by the viewer, unlike X-Forwarded-For whose entries depend on what
+		// the Function URL appends.
+		if v := viewerIP(r.Header.Get("CloudFront-Viewer-Address")); v != "" {
+			ip = v
 		}
 	}
 	s.mu.Lock()
@@ -259,6 +321,29 @@ func (s *Server) share(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "public, max-age=86400")
 	w.Write([]byte(page))
 }
+
+// rereadAfterConflict fetches the object whose conditional PUT won the race.
+// That write can take a moment to become readable, so a missing object is
+// retried; anything else is reported. The locally rendered bytes are never
+// substituted: a rolling deployment can have instances on different renderer or
+// font versions, and serving a variant of the stored object under an immutable
+// cache policy would pin the difference for a year.
+func (s *Server) rereadAfterConflict(ctx context.Context, key string) ([]byte, error) {
+	for delay := 25 * time.Millisecond; ; delay *= 2 {
+		b, e := s.Store.Get(ctx, key)
+		if e == nil {
+			return b, nil
+		}
+		if !errors.Is(e, store.ErrNotFound) || delay > 200*time.Millisecond {
+			return nil, e
+		}
+		select {
+		case <-time.After(delay):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+}
 func (s *Server) og(w http.ResponseWriter, r *http.Request) {
 	image := r.PathValue("image")
 	if !strings.HasSuffix(image, ".png") {
@@ -270,7 +355,9 @@ func (s *Server) og(w http.ResponseWriter, r *http.Request) {
 		problem(w, 400, "invalid_id", nil)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	// The request budget covers the S3 round trips; only the rendering itself is
+	// held to the 3s limit.
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
 	r = r.WithContext(ctx)
 	key := "og/" + id + ".png"
@@ -280,11 +367,13 @@ func (s *Server) og(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-		b, e = render.PNG(ctx, g)
+		rctx, rcancel := context.WithTimeout(ctx, 3*time.Second)
+		b, e = render.PNG(rctx, g)
+		rcancel()
 		if e == nil {
 			e = s.Store.PutIfAbsent(ctx, key, b, "image/png")
 			if errors.Is(e, store.ErrExists) {
-				b, e = s.Store.Get(ctx, key)
+				b, e = s.rereadAfterConflict(ctx, key)
 			}
 		}
 	}

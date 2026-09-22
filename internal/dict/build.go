@@ -286,5 +286,52 @@ func Build(kvg, kdic, overrides []byte) (Dictionary, error) {
 	if len(d.Parts) == 0 {
 		return d, fmt.Errorf("empty dictionary")
 	}
+	if e := verifySpecials(&d, ov); e != nil {
+		return d, e
+	}
 	return d, nil
+}
+
+// LegendChars are the whole-glyph assets the special slots draw from; a build
+// without them would fail only at request time.
+var LegendChars = []string{"彁", "妛", "雲", "龍"}
+
+// verifySpecials fails the build when an enabled special slot has no drawing
+// asset, or when an override no longer matches any part.
+func verifySpecials(d *Dictionary, ov map[string]Override) error {
+	whole, used, frames := map[string]bool{}, map[string]bool{}, 0
+	for i := range d.Parts {
+		p := &d.Parts[i]
+		if p.Position == "whole" {
+			whole[p.Char] = true
+		}
+		used[p.ID] = true
+		if p.Inner != nil && p.Operator != "" {
+			frames++
+		}
+	}
+	for _, c := range LegendChars {
+		if !whole[c] {
+			return fmt.Errorf("legend asset missing: no whole part for %q", c)
+		}
+	}
+	ids := make([]string, 0, len(ov))
+	for id := range ov {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		o := ov[id]
+		if o.Inner != nil && o.Operator == "" {
+			return fmt.Errorf("override %s sets inner without operator", id)
+		}
+		if !o.Exclude && !used[id] {
+			return fmt.Errorf("override %s matched no part", id)
+		}
+	}
+	if frames == 0 {
+		return fmt.Errorf("no frame part with both inner and operator")
+	}
+	d.Report["frameParts"] = frames
+	return nil
 }

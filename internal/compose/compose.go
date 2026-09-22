@@ -95,10 +95,21 @@ func (e *Engine) rank(morae []string, mode, okuri string) []candidate {
 	return out
 }
 
-// segment uses DP to select up to three contiguous reading intervals; all spans are cached.
-func (e *Engine) segment(r kana.Reading, slots int) [][]candidate {
+// slotKey maps a candidate's part count to the number of reading intervals it
+// can actually consume: a frame part occupies one slot without carrying a reading.
+func slotKey(parts int, frame bool) int {
+	if frame {
+		parts--
+	}
+	return min(3, max(1, parts))
+}
+
+// plans solves the segmentation DP once per distinct slot count, sharing a
+// single span cache so rank runs at most once per interval. Callers precompute
+// every slot count they may need before starting workers; the result is then
+// read-only and safe to share.
+func (e *Engine) plans(r kana.Reading, slots []int) map[int][][]candidate {
 	n := len(r.Morae)
-	kmax := min(3, slots, n)
 	cache := map[[2]int][]candidate{}
 	get := func(i, j int) []candidate {
 		key := [2]int{i, j}
@@ -113,6 +124,17 @@ func (e *Engine) segment(r kana.Reading, slots int) [][]candidate {
 		}
 		return v
 	}
+	out := map[int][][]candidate{}
+	for _, s := range slots {
+		if _, done := out[s]; !done {
+			out[s] = e.segment(n, min(s, n), get)
+		}
+	}
+	return out
+}
+
+// segment uses DP to select up to kmax contiguous reading intervals.
+func (e *Engine) segment(n, kmax int, get func(int, int) []candidate) [][]candidate {
 	dp := make([][]float64, kmax+1)
 	prev := make([][]int, kmax+1)
 	for k := range dp {
@@ -252,8 +274,14 @@ type result struct {
 }
 
 func (e *Engine) attempt(groups [][]candidate, count, depth int, temp float64, rng *rand.Rand, frame bool) (result, error) {
+	var fp *dict.Part
+	if frame && len(e.frames) > 0 && count >= 3 {
+		// The frame takes a slot of its own so no reading part is discarded.
+		fp = e.frames[rng.IntN(len(e.frames))]
+		count--
+	}
 	parts := make([]*dict.Part, 0, count)
-	cs := make([]model.Component, 0, count)
+	cs := make([]model.Component, 0, count+1)
 	quality := 0.0
 	for i := 0; i < count; i++ {
 		pool := groups[i%len(groups)]
@@ -270,11 +298,9 @@ func (e *Engine) attempt(groups [][]candidate, count, depth int, temp float64, r
 		quality += c.score
 	}
 	var tree *model.Node
-	if frame && len(e.frames) > 0 && count >= 3 {
-		p := e.frames[rng.IntN(len(e.frames))]
-		parts[0] = p
-		cs[0] = model.Component{ID: p.ID, Char: p.Char, Role: "decor"}
-		tree = &model.Node{Operator: p.Operator, Children: []*model.Node{leaf(p), e.tree(parts[1:], depth-1, rng)}}
+	if fp != nil {
+		cs = append([]model.Component{{ID: fp.ID, Char: fp.Char, Role: "decor"}}, cs...)
+		tree = &model.Node{Operator: fp.Operator, Children: []*model.Node{leaf(fp), e.tree(parts, depth-1, rng)}}
 	} else {
 		tree = e.tree(parts, depth, rng)
 	}
@@ -363,10 +389,15 @@ func (e *Engine) Generate(ctx context.Context, r kana.Reading, now time.Time) (m
 				return g, nil
 			}
 		}
-		return g, fmt.Errorf("missing legend asset")
+		// The build verifies these assets, so this only happens if a dictionary
+		// slipped through; draw a normal glyph rather than failing the request.
 	}
-	groups := e.segment(r, rarity.MaxParts)
-	best, err := e.attempt(groups, 1, 1, rarity.Temperature, rng, false)
+	slots := []int{slotKey(1, false)}
+	for n := rarity.MinParts; n <= rarity.MaxParts; n++ {
+		slots = append(slots, slotKey(n, false), slotKey(n, true))
+	}
+	plans := e.plans(r, slots)
+	best, err := e.attempt(plans[slotKey(1, false)], 1, 1, rarity.Temperature, rng, false)
 	if err != nil {
 		return g, err
 	}
@@ -388,8 +419,8 @@ func (e *Engine) Generate(ctx context.Context, r kana.Reading, now time.Time) (m
 					return
 				}
 				n := rarity.MinParts + rr.IntN(rarity.MaxParts-rarity.MinParts+1)
-				frame := n >= 3 && n-1 <= 1<<(rarity.MaxDepth-1) && rr.IntN(3) == 0
-				v, err := e.attempt(groups, n, rarity.MaxDepth, rarity.Temperature, rr, frame)
+				frame := n >= 3 && len(e.frames) > 0 && n-1 <= 1<<(rarity.MaxDepth-1) && rr.IntN(3) == 0
+				v, err := e.attempt(plans[slotKey(n, frame)], n, rarity.MaxDepth, rarity.Temperature, rr, frame)
 				if err == nil {
 					select {
 					case results <- v:

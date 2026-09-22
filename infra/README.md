@@ -9,7 +9,24 @@ TerraformはECR、非公開S3、Lambda arm64、Function URL（AWS_IAM）、OAC�
 3. リポジトリルートで `docker buildx build --platform linux/arm64 --provenance=false -t <ECR URI>:<一意の版> --push .`。
 4. pushしたイメージのdigest URIを `image_uri` に指定してplan/apply。CloudFrontとLambdaを作成。
 5. `terraform output -raw base_url` の値を `base_url` 変数へ設定して再度plan/apply。初回のみ依存循環回避のため2段階としています。この完了までは共有URLがlocalhostを指すため公開しないでください。
-6. `web/dist/assets/` をSPAバケットの `assets/` へ、`Cache-Control: public,max-age=31536000,immutable` で同期。`index.html` は `no-cache`、`kanji-ui.otf` は `public,max-age=86400` でアップロード。
+6. 共有HTMLはLambdaがイメージ内の `/app/web/index.html` を返すため、S3へ同期するアセットは必ず同じイメージから取り出す。手元の `web/dist` を同期するとハッシュ付きファイル名が食い違い、共有ページのJS/CSSが403になる。
+
+   ```bash
+   SPA_BUCKET=$(terraform -chdir=infra output -raw spa_bucket)
+   cid=$(docker create <ECR URI>:<版>)
+   # 取り出し先は毎回作り直す。既存のディレクトリへ docker cp すると中身を
+   # 置き換えず release-web/web として入れ子になり、前回の版を同期してしまう。
+   rm -rf ./release-web && mkdir -p ./release-web
+   docker cp "$cid:/app/web/." ./release-web && docker rm "$cid"
+   aws s3 sync ./release-web/assets "s3://$SPA_BUCKET/assets/" \
+     --cache-control 'public,max-age=31536000,immutable'
+   aws s3 cp ./release-web/index.html "s3://$SPA_BUCKET/index.html" --cache-control 'no-cache'
+   aws s3 cp ./release-web/kanji-ui.otf "s3://$SPA_BUCKET/kanji-ui.otf" --cache-control 'public,max-age=86400'
+   # index.html が参照する実体がS3にあるか確認する
+   grep -o '/assets/[A-Za-z0-9._-]*' ./release-web/index.html | sort -u | while read -r k; do
+     aws s3api head-object --bucket "$SPA_BUCKET" --key "${k#/}" >/dev/null || { echo "missing $k"; exit 1; }
+   done
+   ```
 7. CloudFrontの `/` `/index.html` `/g/*` を無効化。旧共有HTMLが参照するハッシュ付きアセットは、HTMLキャッシュの寿命を超えるまで削除しないでください。
 8. CloudFront経由でPOST→GET→共有HTML→OGPを確認。POSTの本文ハッシュ有／無・改変時の動作、Function URLへの直接呼び出しが拒否されることを確認。
 

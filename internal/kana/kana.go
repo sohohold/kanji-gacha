@@ -83,16 +83,35 @@ func Morae(s string) ([]string, *Issue) {
 	}
 	return out, nil
 }
+
+// Charset reports the first rune outside the allowed set, so that spec 2.1 can
+// check the character set before the length.
+func Charset(s string) *Issue {
+	for i, r := range []rune(s) {
+		if !strings.ContainsRune(Basic+Small+"ッー", r) {
+			at := i
+			return &Issue{Code: "character", Position: &at, Normalized: s}
+		}
+	}
+	return nil
+}
 func Validate(in Input) (Reading, *Issue) {
 	if in.Mode != "on" && in.Mode != "kun" {
 		return Reading{}, &Issue{Field: "mode", Code: "enum"}
 	}
-	for field, value := range map[string]string{"reading": in.Reading, "okurigana": in.Okurigana} {
-		if !utf8.ValidString(value) {
-			return Reading{}, &Issue{Field: field, Code: "encoding"}
+	for _, f := range []struct{ name, value string }{{"reading", in.Reading}, {"okurigana", in.Okurigana}} {
+		if !utf8.ValidString(f.value) {
+			return Reading{}, &Issue{Field: f.name, Code: "encoding"}
 		}
 	}
 	r := Reading{Mode: in.Mode, Reading: Normalize(in.Reading), Okurigana: Normalize(in.Okurigana)}
+	// spec 2.1 orders the checks as character set, then length, then ordering.
+	for _, f := range []struct{ name, value string }{{"reading", r.Reading}, {"okurigana", r.Okurigana}} {
+		if issue := Charset(f.value); issue != nil {
+			issue.Field = f.name
+			return r, issue
+		}
+	}
 	n, o := utf8.RuneCountInString(r.Reading), utf8.RuneCountInString(r.Okurigana)
 	if n < 1 || n > 5 {
 		return r, &Issue{Field: "reading", Code: "length"}

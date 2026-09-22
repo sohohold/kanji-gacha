@@ -42,11 +42,27 @@ export function morae(s: string): string[] | Issue {
   }
   return out;
 }
+// charset reports the first character outside the allowed set, so that spec 2.1
+// can check the character set before the length.
+export function charset(s: string): Issue | undefined {
+  const chars = [...s];
+  for (let i = 0; i < chars.length; i++)
+    if (!(basic + small + "ッー").includes(chars[i]))
+      return { field: "", code: "character", position: i, normalized: s };
+}
 export function validate(input: Input): Issue | undefined {
   if (!["on", "kun"].includes(input.mode))
     return { field: "mode", code: "enum" };
   const r = normalize(input.reading),
     o = normalize(input.okurigana ?? "");
+  // spec 2.1 orders the checks as character set, then length, then ordering.
+  for (const [field, value] of [
+    ["reading", r],
+    ["okurigana", o],
+  ]) {
+    const issue = charset(value);
+    if (issue) return { ...issue, field };
+  }
   if ([...r].length < 1 || [...r].length > 5)
     return { field: "reading", code: "length" };
   if ([...o].length > 3 || (input.mode === "on" && o !== ""))
