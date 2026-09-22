@@ -75,10 +75,12 @@ func (s *Server) Handler() http.Handler {
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Write(s.index)
 	})
-	// Without this the default mux answers a non-GET /g/* or /og/* with a
-	// text/plain 405 that carries no Cache-Control.
+	// Registering "/" stops the default mux from answering a non-GET /g/* or
+	// /og/* with a text/plain 405 that carries no Cache-Control, so answer it
+	// here instead. Only a path that a GET would actually reach gets the 405;
+	// anything else is a missing resource.
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead && servesGet(mux, r) {
 			w.Header().Set("Allow", "GET, HEAD")
 			problem(w, 405, "method_not_allowed", nil)
 			return
@@ -91,6 +93,15 @@ func (s *Server) Handler() http.Handler {
 		mux.ServeHTTP(w, r)
 	})
 }
+
+// servesGet reports whether a GET for this path would reach a real route rather
+// than the catch-all, which separates a wrong method from a missing resource.
+func servesGet(mux *http.ServeMux, r *http.Request) bool {
+	probe := r.Clone(r.Context())
+	probe.Method = http.MethodGet
+	_, pattern := mux.Handler(probe)
+	return pattern != "" && pattern != "/"
+}
 func problem(w http.ResponseWriter, status int, code string, issue *kana.Issue) {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.Header().Set("Cache-Control", "no-store")
@@ -101,6 +112,31 @@ func problem(w http.ResponseWriter, status int, code string, issue *kana.Issue) 
 	}
 	json.NewEncoder(w).Encode(v)
 }
+
+// viewerIP reads the address out of a CloudFront-Viewer-Address value, which
+// carries a port: "198.51.100.7:52011" or "[2001:db8::1]:52011". Unbracketed
+// IPv6 and a bare address without a port are accepted too, since the exact
+// shape is not guaranteed.
+func viewerIP(v string) string {
+	if v == "" {
+		return ""
+	}
+	if host, _, e := net.SplitHostPort(v); e == nil {
+		if net.ParseIP(host) != nil {
+			return host
+		}
+		return ""
+	}
+	if net.ParseIP(v) != nil {
+		return v
+	}
+	if i := strings.LastIndex(v, ":"); i > 0 {
+		if host := v[:i]; net.ParseIP(host) != nil {
+			return host
+		}
+	}
+	return ""
+}
 func (s *Server) allow(r *http.Request) bool {
 	ip, _, e := net.SplitHostPort(r.RemoteAddr)
 	if e != nil {
@@ -109,14 +145,9 @@ func (s *Server) allow(r *http.Request) bool {
 	if s.TrustCloudFront {
 		// CloudFront-Viewer-Address is added by CloudFront itself and cannot be
 		// set by the viewer, unlike X-Forwarded-For whose entries depend on what
-		// the Function URL appends. The value is "address:port", IPv6 included.
-		if v := r.Header.Get("CloudFront-Viewer-Address"); v != "" {
-			if i := strings.LastIndex(v, ":"); i > 0 {
-				v = v[:i]
-			}
-			if net.ParseIP(v) != nil {
-				ip = v
-			}
+		// the Function URL appends.
+		if v := viewerIP(r.Header.Get("CloudFront-Viewer-Address")); v != "" {
+			ip = v
 		}
 	}
 	s.mu.Lock()

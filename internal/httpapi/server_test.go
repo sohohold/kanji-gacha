@@ -162,7 +162,7 @@ func TestOGPConflictReturnsImage(t *testing.T) {
 
 func TestMethodNotAllowedIsProblem(t *testing.T) {
 	s := setup(t)
-	for _, path := range []string{"/g/" + strings.Repeat("a", 32), "/og/" + strings.Repeat("a", 32) + ".png", "/"} {
+	for _, path := range []string{"/g/" + strings.Repeat("a", 32), "/og/" + strings.Repeat("a", 32) + ".png", "/", "/healthz", "/assets/index.js"} {
 		w := call(s, "POST", path, "")
 		if w.Code != 405 {
 			t.Errorf("%s: status %d", path, w.Code)
@@ -198,5 +198,54 @@ func TestRateLimitUsesViewerAddress(t *testing.T) {
 	other.Header.Set("CloudFront-Viewer-Address", "198.51.100.8:41000")
 	if !s.allow(other) {
 		t.Fatal("a second viewer behind the same edge must have its own bucket")
+	}
+}
+
+// A path no GET route serves is a missing resource, not a wrong method.
+func TestUnknownPathIsNotFound(t *testing.T) {
+	s := setup(t)
+	for _, method := range []string{"GET", "POST", "DELETE"} {
+		w := call(s, method, "/does-not-exist", "")
+		if w.Code != 404 {
+			t.Errorf("%s /does-not-exist: status %d", method, w.Code)
+		}
+		if ct := w.Header().Get("Content-Type"); ct != "application/problem+json" {
+			t.Errorf("%s /does-not-exist: content type %q", method, ct)
+		}
+		if a := w.Header().Get("Allow"); a != "" {
+			t.Errorf("%s /does-not-exist: advertises Allow %q", method, a)
+		}
+	}
+}
+
+func TestViewerIP(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{"198.51.100.7:52011", "198.51.100.7"},
+		{"[2001:db8::1]:52011", "2001:db8::1"},
+		{"2001:db8::1:52011", "2001:db8::1"},
+		{"198.51.100.7", "198.51.100.7"},
+		{"2001:db8::1", "2001:db8::1"},
+		{"", ""},
+		{"not-an-address", ""},
+		{"example.test:80", ""},
+	} {
+		if got := viewerIP(c.in); got != c.want {
+			t.Errorf("viewerIP(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// An IPv6 viewer must get its own bucket rather than falling back to the
+// adapter's RemoteAddr, which every viewer shares.
+func TestRateLimitIPv6Viewer(t *testing.T) {
+	s := setup(t)
+	s.TrustCloudFront = true
+	r := httptest.NewRequest("POST", "/api/v1/glyphs", nil)
+	r.Header.Set("CloudFront-Viewer-Address", "[2001:db8::1]:52011")
+	if !s.allow(r) {
+		t.Fatal("first request rejected")
+	}
+	if _, ok := s.ips["2001:db8::1"]; !ok {
+		t.Fatalf("rate limit keyed on %v, not the viewer address", s.ips)
 	}
 }
