@@ -127,7 +127,9 @@ resource "aws_cloudfront_origin_request_policy" "api" {
   query_strings_config { query_string_behavior = "none" }
   headers_config {
     header_behavior = "whitelist"
-    headers { items = ["Content-Type", "x-amz-content-sha256"] }
+    # CloudFront-Viewer-Address is the rate-limit key; the cache policy must not
+    # include it or the cache would split per viewer.
+    headers { items = ["Content-Type", "x-amz-content-sha256", "CloudFront-Viewer-Address"] }
   }
 }
 resource "aws_cloudfront_distribution" "app" {
