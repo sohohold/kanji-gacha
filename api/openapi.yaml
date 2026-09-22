@@ -1,0 +1,156 @@
+openapi: 3.1.0
+info:
+  title: 架空漢字ガチャ
+  version: 0.1.0
+paths:
+  /api/v1/glyphs:
+    post:
+      operationId: generateGlyph
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Input'
+      responses:
+        '200':
+          description: Saved glyph
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Glyph'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/glyphs/{id}:
+    get:
+      operationId: getGlyph
+      parameters:
+        - $ref: '#/components/parameters/ID'
+      responses:
+        '200':
+          description: Previously saved glyph
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Glyph'
+        default:
+          $ref: '#/components/responses/Problem'
+  /g/{id}:
+    get:
+      operationId: sharePage
+      parameters:
+        - $ref: '#/components/parameters/ID'
+      responses:
+        '200':
+          description: HTML with OGP metadata
+          content:
+            text/html:
+              schema: {type: string}
+        default:
+          $ref: '#/components/responses/Problem'
+  /og/{id}.png:
+    get:
+      operationId: ogImage
+      parameters:
+        - $ref: '#/components/parameters/ID'
+      responses:
+        '200':
+          description: Saved or freshly rendered 1200x630 PNG
+          content:
+            image/png:
+              schema: {type: string, format: binary}
+        default:
+          $ref: '#/components/responses/Problem'
+components:
+  parameters:
+    ID:
+      name: id
+      in: path
+      required: true
+      schema: {type: string, pattern: '^[0-9a-f]{32}$'}
+  responses:
+    Problem:
+      description: Input 400/413/415/422, not found 404, rate limit 429, or unavailable 503
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    Input:
+      type: object
+      additionalProperties: false
+      required: [mode, reading]
+      properties:
+        mode: {type: string, enum: [on, kun]}
+        reading:
+          type: string
+          description: NFKC and katakana normalization precede the 1–5 code point limit and kana grammar validation.
+        okurigana:
+          type: string
+          description: 0–3 normalized code points; total at most 6. Must be empty in on mode.
+    Reading:
+      type: object
+      required: [mode, reading, okurigana, display, morae]
+      properties:
+        mode: {type: string, enum: [on, kun]}
+        reading: {type: string}
+        okurigana: {type: string}
+        display: {type: string}
+        morae: {type: array, items: {type: string}}
+    Component:
+      type: object
+      required: [id, char, role, score]
+      properties:
+        id: {type: string}
+        char: {type: string}
+        role: {type: string, enum: [reading, decor]}
+        score: {type: number}
+    Node:
+      type: object
+      properties:
+        operator: {type: string}
+        componentId: {type: string}
+        char: {type: string}
+        children:
+          type: array
+          items: {$ref: '#/components/schemas/Node'}
+    Glyph:
+      type: object
+      required: [id, schemaVersion, generatorVersion, configVersion, dictionaryVersion, normalizedKey, reading, createdAt, rarity, ids, strokes, svg, components, tree, legend, ogpKey, ogpReading, license, fallback]
+      properties:
+        id: {type: string, pattern: '^[0-9a-f]{32}$'}
+        schemaVersion: {type: integer, const: 1}
+        generatorVersion: {type: integer}
+        configVersion: {type: integer}
+        dictionaryVersion: {type: string}
+        normalizedKey: {type: string}
+        reading: {$ref: '#/components/schemas/Reading'}
+        createdAt: {type: string, format: date-time}
+        rarity: {type: string, enum: [N, R, SR, SSR, UR]}
+        ids: {type: string}
+        strokes: {type: integer, minimum: 1}
+        svg: {type: string}
+        components: {type: array, items: {$ref: '#/components/schemas/Component'}}
+        tree: {$ref: '#/components/schemas/Node'}
+        legend: {type: [string, 'null']}
+        ogpKey: {type: string}
+        ogpReading: {type: string}
+        license: {type: string}
+        fallback: {type: boolean}
+    Issue:
+      type: object
+      required: [field, code]
+      properties:
+        field: {type: string}
+        code: {type: string}
+        position: {type: integer}
+        normalized: {type: string}
+    Problem:
+      type: object
+      required: [type, title, status, code]
+      properties:
+        type: {type: string}
+        title: {type: string}
+        status: {type: integer}
+        code: {type: string}
+        errors: {type: array, items: {$ref: '#/components/schemas/Issue'}}

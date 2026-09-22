@@ -1,0 +1,16 @@
+node_modules/
+web/dist/
+.local/
+.env
+coverage*
+*.test
+bin/
+playwright-report/
+test-results/
+.terraform/
+*.tfstate*
+*.tfplan
+
+*.tsbuildinfo
+
+.claude/settings.local.json

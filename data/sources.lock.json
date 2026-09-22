@@ -1,0 +1,17 @@
+{
+  "report": {
+    "ambiguousParts": 951,
+    "mergedParts": 880,
+    "partial": 355,
+    "parts": 12855,
+    "sourceCharacters": 6704,
+    "unknownPosition": 808,
+    "withReadings": 12581
+  },
+  "sha256": {
+    "kanjidic2": "4e58e1771b677a73818066c37d7606250a72ea9dc8dc9293fe6151a332ba38e3",
+    "kanjivg": "10ef701df3cabbcfbe52dda2ab5a14b155f5d965790144235f4f846be01aaca2",
+    "overrides": "84a2d05840ec444b44a532f29c2a17fe12c8121ffa750f83e6826ed5eed94aab"
+  },
+  "version": "10ef701df3ca-4e58e1771b67-84a2d058"
+}
