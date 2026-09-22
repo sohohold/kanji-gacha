@@ -118,27 +118,42 @@ func TestErrors(t *testing.T) {
 }
 
 // conflictStore simulates the loser of a concurrent first OGP request: the
-// conditional PUT is rejected while the winner's object is not yet readable.
+// conditional PUT is rejected, and the winner's object only becomes readable
+// after misses (or never, when readErr is set to a real failure).
 type conflictStore struct {
 	store.Store
-	png string
+	png     string
+	misses  int
+	winner  []byte
+	readErr error
+	reads   int
 }
 
-func (c conflictStore) Get(ctx context.Context, k string) ([]byte, error) {
+func (c *conflictStore) Get(ctx context.Context, k string) ([]byte, error) {
 	if k == c.png {
-		return nil, store.ErrNotFound
+		c.reads++
+		if c.reads == 1 {
+			return nil, store.ErrNotFound // nothing cached yet, so the handler renders
+		}
+		if c.readErr != nil {
+			return nil, c.readErr
+		}
+		if c.reads-1 <= c.misses {
+			return nil, store.ErrNotFound
+		}
+		return c.winner, nil
 	}
 	return c.Store.Get(ctx, k)
 }
-func (c conflictStore) PutIfAbsent(ctx context.Context, k string, b []byte, ct string) error {
+func (c *conflictStore) PutIfAbsent(ctx context.Context, k string, b []byte, ct string) error {
 	if k == c.png {
 		return store.ErrExists
 	}
 	return c.Store.PutIfAbsent(ctx, k, b, ct)
 }
 
-func TestOGPConflictReturnsImage(t *testing.T) {
-	s := setup(t)
+func savedGlyph(t *testing.T, s *Server) model.Glyph {
+	t.Helper()
 	w := call(s, "POST", "/api/v1/glyphs", `{"mode":"on","reading":"セイ"}`)
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
@@ -147,16 +162,45 @@ func TestOGPConflictReturnsImage(t *testing.T) {
 	if e := json.Unmarshal(w.Body.Bytes(), &g); e != nil {
 		t.Fatal(e)
 	}
-	s.Store = conflictStore{s.Store, g.OGPKey}
-	w = call(s, "GET", "/og/"+g.ID+".png", "")
+	return g
+}
+
+// The loser of the race serves the object that actually won the write, not its
+// own render, which a rolling deployment could have produced differently.
+func TestOGPConflictReturnsStoredImage(t *testing.T) {
+	s := setup(t)
+	g := savedGlyph(t, s)
+	winner := []byte("\x89PNG\r\n\x1a\nwinning bytes")
+	// The first two rereads miss, as they would while the winner's write lands.
+	s.Store = &conflictStore{Store: s.Store, png: g.OGPKey, misses: 2, winner: winner}
+	w := call(s, "GET", "/og/"+g.ID+".png", "")
 	if w.Code != 200 {
 		t.Fatalf("losing the PUT race must still serve the image, got %d %s", w.Code, w.Body.String())
 	}
 	if ct := w.Header().Get("Content-Type"); ct != "image/png" {
 		t.Fatalf("content type %q", ct)
 	}
-	if !bytes.HasPrefix(w.Body.Bytes(), []byte("\x89PNG\r\n\x1a\n")) {
-		t.Fatal("body is not a PNG")
+	if !bytes.Equal(w.Body.Bytes(), winner) {
+		t.Fatalf("served %d bytes of its own render instead of the stored object", w.Body.Len())
+	}
+}
+
+// A storage or authentication failure must not be reported as a served image,
+// least of all under a one-year immutable cache policy.
+func TestOGPConflictKeepsReadError(t *testing.T) {
+	s := setup(t)
+	g := savedGlyph(t, s)
+	cs := &conflictStore{Store: s.Store, png: g.OGPKey, readErr: errors.New("access denied")}
+	s.Store = cs
+	w := call(s, "GET", "/og/"+g.ID+".png", "")
+	if w.Code != 503 {
+		t.Fatalf("status %d, want 503", w.Code)
+	}
+	if cc := w.Header().Get("Cache-Control"); cc != "no-store" {
+		t.Errorf("cache control %q", cc)
+	}
+	if cs.reads != 2 { // the initial lookup, then one reread that must not be retried
+		t.Errorf("read the object %d times, want 2", cs.reads)
 	}
 }
 

@@ -321,6 +321,29 @@ func (s *Server) share(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "public, max-age=86400")
 	w.Write([]byte(page))
 }
+
+// rereadAfterConflict fetches the object whose conditional PUT won the race.
+// That write can take a moment to become readable, so a missing object is
+// retried; anything else is reported. The locally rendered bytes are never
+// substituted: a rolling deployment can have instances on different renderer or
+// font versions, and serving a variant of the stored object under an immutable
+// cache policy would pin the difference for a year.
+func (s *Server) rereadAfterConflict(ctx context.Context, key string) ([]byte, error) {
+	for delay := 25 * time.Millisecond; ; delay *= 2 {
+		b, e := s.Store.Get(ctx, key)
+		if e == nil {
+			return b, nil
+		}
+		if !errors.Is(e, store.ErrNotFound) || delay > 200*time.Millisecond {
+			return nil, e
+		}
+		select {
+		case <-time.After(delay):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+}
 func (s *Server) og(w http.ResponseWriter, r *http.Request) {
 	image := r.PathValue("image")
 	if !strings.HasSuffix(image, ".png") {
@@ -350,12 +373,7 @@ func (s *Server) og(w http.ResponseWriter, r *http.Request) {
 		if e == nil {
 			e = s.Store.PutIfAbsent(ctx, key, b, "image/png")
 			if errors.Is(e, store.ErrExists) {
-				// Rendering is deterministic, so the copy in hand matches the
-				// stored one; keep it if the winner's write is not readable yet.
-				if stored, se := s.Store.Get(ctx, key); se == nil {
-					b = stored
-				}
-				e = nil
+				b, e = s.rereadAfterConflict(ctx, key)
 			}
 		}
 	}
