@@ -9,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/smithy-go"
 	"io"
+	"time"
 )
 
 type S3 struct {
@@ -44,18 +45,35 @@ func (s *S3) PutIfAbsent(ctx context.Context, k string, b []byte, ct string) err
 	if e := checkKey(k); e != nil {
 		return e
 	}
-	_, e := s.Client.PutObject(ctx, &s3.PutObjectInput{Bucket: &s.Bucket, Key: &k, Body: bytes.NewReader(b), ContentType: &ct, IfNoneMatch: aws.String("*")})
-	return classify(e)
+	// S3 answers 412 PreconditionFailed once the key exists, and 409
+	// ConditionalRequestConflict while a competing write to it is still in
+	// progress. The 409 says nothing about whether that write will land, so the
+	// PUT is retried until it either wins or meets the finished object as a 412.
+	for delay := 25 * time.Millisecond; ; delay *= 2 {
+		_, e := s.Client.PutObject(ctx, &s3.PutObjectInput{Bucket: &s.Bucket, Key: &k, Body: bytes.NewReader(b), ContentType: &ct, IfNoneMatch: aws.String("*")})
+		if code(e) != "ConditionalRequestConflict" || delay > 200*time.Millisecond {
+			return classify(e)
+		}
+		select {
+		case <-time.After(delay):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 }
-func classify(e error) error {
+func code(e error) string {
 	var ae smithy.APIError
 	if errors.As(e, &ae) {
-		switch ae.ErrorCode() {
-		case "NoSuchKey", "NotFound":
-			return ErrNotFound
-		case "PreconditionFailed", "ConditionalRequestConflict":
-			return ErrExists
-		}
+		return ae.ErrorCode()
+	}
+	return ""
+}
+func classify(e error) error {
+	switch code(e) {
+	case "NoSuchKey", "NotFound":
+		return ErrNotFound
+	case "PreconditionFailed", "ConditionalRequestConflict":
+		return ErrExists
 	}
 	return e
 }

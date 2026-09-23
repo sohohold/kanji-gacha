@@ -1,8 +1,8 @@
-# AWSへの配置（未デプロイ）
+# AWSへの配置
 
 Terraformは2つの構成に分かれています。`infra/bootstrap` はアカウント単位で一度だけ人の認証で適用するもので、Terraform stateのS3バケット、GitHub ActionsのOIDCデプロイロール、Lambda実行ロールの権限境界、AWS Budgetsの通知を作ります。`infra` はアプリ本体で、ECR、非公開S3、Lambda arm64、Function URL（AWS_IAM）、OAC、CloudFront、ロググループを定義します。顧客VPC・NAT Gatewayは作りません。アプリ本体は通常 `.github/workflows/deploy.yml` が `scripts/deploy.sh` を通して適用します。
 
-`infra/bootstrap` は2026-09-23にアカウント `473536070013` へapply済みで、stateはS3にあります。`infra`（アプリ本体）はまだapplyしていません。以下の操作は実際にAWSリソースと費用を発生させるので、対象アカウントとplanを確認してから実行してください。
+`infra/bootstrap` と `infra` は2026-09-23にアカウント `473536070013` へapply済みで、stateはS3にあります。アプリはGitHub Actionsからデプロイされ、`https://d1l7f1zwqn87zt.cloudfront.net` で動いています。以下の操作は実際にAWSリソースと費用を発生させるので、対象アカウントとplanを確認してから実行してください。「初回セットアップ」は別アカウントへ移すときや作り直すときの手順として残しています。
 
 ## 実行前のAWS認証
 
@@ -90,7 +90,7 @@ cd ../..
 
 以前このリポジトリの `infra` で `terraform init` した手元の環境では、バックエンドがS3に変わったため `terraform -chdir=infra init -reconfigure` が必要です（applyしていなければ移すstateはありません）。
 
-`vars.AWS_DEPLOY_ROLE_ARN` を設定する前に手元から配置したい場合は、認証したシェルで `scripts/deploy.sh` を実行すると同じ手順を踏みます（aws、terraform、docker buildx、jq、curl、gitが必要）。
+`vars.AWS_DEPLOY_ROLE_ARN` を設定する前に手元から配置したい場合は、認証したシェルで `scripts/deploy.sh` を実行すると同じ手順を踏みます（aws、terraform、docker buildx、jq、curl、git、sha256sumが必要）。
 
 ## デプロイの流れ
 
@@ -108,7 +108,7 @@ GitHubは同じconcurrencyグループで待機中の実行を1つしか残さ�
 6. digestを指定して `plan -out` し、削除・置換を含むplanなら中止してからそのplanをapplyする。`base_url` はLambdaに設定済みの値（出力 `configured_base_url`。初回はCloudFrontのドメイン）か `vars.BASE_URL` を必ず渡し、既定値のlocalhostへ戻しません。末尾の `/` は取り除きます。`https://` とホスト名だけのURLでない場合（パス・ポート・クエリ付きや `http://`）と、ホストがCloudFrontのドメインでも別名でもない場合は、何もapplyせずに中止します。
 7. `kanji-ui.otf` と `index.html`（`no-cache`）をアップロードし、`index.html` が参照する実体がS3にあるか確認する。
 8. CloudFrontの `/` `/index.html` `/g/*` `/kanji-ui.otf` を無効化し、完了を待つ。
-9. CloudFront経由でトップ・アセット・フォント・API（不正IDで400）・共有ページ（存在しないIDで404のSPA）を確認し、Function URLへの直接呼び出しが403になることを確認する。生成（POST）はしないので、確認のたびに結果が保存されることはありません。
+9. CloudFront経由でトップ・アセット・フォント・API（不正IDで400）・共有ページ（存在しないIDで404のSPA）を確認し、Function URLへの直接呼び出しが403になることを確認する。POSTは、本文と一致する `x-amz-content-sha256` を付けたときだけアプリまで届き（不正な `mode` で422）、ハッシュが本文と異なるときと付けないときはOACの署名検証で403になることを確認する。どのPOSTも入力検証で弾かれるので、確認のたびに結果が保存されることはなく、レート制限も消費しません。
 
 Dockerfileのweb・Goのステージはビルドマシンの環境で動き、Goは `GOARCH` を指定してクロスコンパイルします。amd64のランナーでもQEMUによるエミュレーションなしでarm64イメージを作れます。
 
@@ -181,4 +181,21 @@ Lambda実行ロールは権限境界 `kanji-gacha-lambda-boundary` を付けた�
 
 ## 未確認の事項
 
-bootstrapのapplyは済んでいます（12リソース作成、S3 stateで差分なしを確認）。アプリ構成のapply、OIDCでのロール引受、Actions経由のデプロイ、Budgetsの通知、CloudWatchでのメトリクス抽出は、まだAWS上で確認していません。デプロイロールの権限はTerraformとAWS CLIが呼ぶAPIから設計したもので、初回のデプロイで不足が見つかった場合は `AccessDenied` のアクションを追加してください。公開前に、CloudFront経由のPOST→GET→共有HTML→OGP、POSTの本文ハッシュ有／無・改変時の動作も確認してください。
+2026-09-23の初回デプロイで、bootstrapとアプリのapply、OIDCでのロール引受、Actions経由のデプロイ、上記9のうちPOST以外の疎通確認までは成功しました。POSTの確認は後から追加したもので、次のデプロイで初めて実行されます。403を期待した確認が422で失敗した場合は、OACが本文のハッシュを検証していないことになるので、原因を調べてください。
+
+残りはAWSのコンソールか人の認証でしか確かめられません。
+
+- CloudFront経由のPOST→GET→共有HTML→OGP画像を、ブラウザで1回通してください。
+- CloudWatchの Metrics → `KanjiGacha` にメトリクスが現れることを確認してください。`Fallback` が `Glyphs` の合計に対して多ければ、`config/generator.json` の `timeoutMs`・`candidates`・`workers` を見直します。手元（x86_64、1コア）では生成の中央値が約5ms、95パーセンタイルが約9msで、200msの予算に対して十分な余裕があります。
+- コールドスタートを確認してください。手元では辞書の展開・デコードに約2秒、ヒープ約70MBを要します。Lambdaでの値は `aws logs filter-log-events --log-group-name /aws/lambda/kanji-gacha --filter-pattern '"Init Duration"'` で出る `REPORT` 行にあります。
+- GitHubの `production` EnvironmentでDeployment branchesが `main` のみになっていることを確認してください。
+- レート制限が閲覧者ごとに分かれていることを確認してください。1台から下のコマンドで続けて12回生成し、後半に429が出た直後に、別の回線（携帯回線など）の端末のブラウザで生成できれば分かれています。`CloudFront-Viewer-Address` が届いていなければ全員が1つのバケットを共有するので、後者も429になります。このコマンドは結果を10件ほど保存します。
+
+```bash
+body='{"mode":"on","reading":"セイ"}'
+hash=$(printf '%s' "$body" | sha256sum | cut -d' ' -f1)
+for i in $(seq 12); do
+  curl -s -o /dev/null -w '%{http_code}\n' -X POST -H 'Content-Type: application/json' \
+    -H "x-amz-content-sha256: $hash" --data-binary "$body" https://d1l7f1zwqn87zt.cloudfront.net/api/v1/glyphs
+done
+```

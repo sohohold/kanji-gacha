@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"kanji-gacha/config"
 	"kanji-gacha/internal/compose"
 	"kanji-gacha/internal/dict"
@@ -371,8 +372,30 @@ func TestRateLimitIPv6Viewer(t *testing.T) {
 	if !s.allow(r) {
 		t.Fatal("first request rejected")
 	}
-	if _, ok := s.ips["2001:db8::1"]; !ok {
-		t.Fatalf("rate limit keyed on %v, not the viewer address", s.ips)
+	if _, ok := s.ips["2001:db8::/64"]; !ok {
+		t.Fatalf("rate limit keyed on %v, not the viewer's /64", s.ips)
+	}
+}
+
+// Addresses within one /64 belong to one subscriber, who can pick any of them.
+func TestRateLimitGroupsIPv6By64(t *testing.T) {
+	s := setup(t)
+	s.TrustCloudFront = true
+	for i := 0; i < 10; i++ {
+		r := httptest.NewRequest("POST", "/api/v1/glyphs", nil)
+		r.Header.Set("CloudFront-Viewer-Address", fmt.Sprintf("2001:db8:0:1:%x::1:52011", i+1))
+		if !s.allow(r) {
+			t.Fatalf("exhausted after %d requests", i)
+		}
+	}
+	r := httptest.NewRequest("POST", "/api/v1/glyphs", nil)
+	r.Header.Set("CloudFront-Viewer-Address", "2001:db8:0:1:ffff::1:52011")
+	if s.allow(r) {
+		t.Fatalf("a fresh address in the same /64 got a fresh bucket: %v", s.ips)
+	}
+	r.Header.Set("CloudFront-Viewer-Address", "2001:db8:0:2::1:52011")
+	if !s.allow(r) {
+		t.Fatal("a neighbouring /64 must have its own bucket")
 	}
 }
 
@@ -388,7 +411,7 @@ func TestRateLimitIgnoresViewerPort(t *testing.T) {
 	if len(s.ips) != 1 {
 		t.Fatalf("one viewer took %d buckets: %v", len(s.ips), s.ips)
 	}
-	if _, ok := s.ips["2001:db8::1"]; !ok {
+	if _, ok := s.ips["2001:db8::/64"]; !ok {
 		t.Fatalf("rate limit keyed on %v", s.ips)
 	}
 }

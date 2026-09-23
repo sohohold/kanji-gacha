@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Builds, pushes and deploys the checked-out commit. The deploy workflow runs
 # this with the OIDC role; a person can run it from the repository root with
-# their own credentials. Needs aws, terraform, docker buildx, jq, curl and git.
+# their own credentials. Needs aws, terraform, docker buildx, jq, curl, git and
+# sha256sum.
 #
 # Environment:
 #   RELEASE             commit to deploy (default: HEAD); also the image tag
@@ -161,20 +162,21 @@ invalidation=$(aws cloudfront create-invalidation --distribution-id "$distributi
 aws cloudfront wait invalidation-completed --distribution-id "$distribution" --id "$invalidation"
 
 # Smoke test through CloudFront. Nothing here writes a glyph.
-expect() { # status url [grep-pattern]
-  local body status
+expect() { # status url [grep-pattern [curl-args...]]
+  local want=$1 url=$2 pattern=${3:-} body status
+  shift $(($# < 3 ? $# : 3))
   for attempt in 1 2 3 4 5 6; do
     body=$(mktemp)
-    status=$(curl -sS -o "$body" -w '%{http_code}' "$2") || status=000
-    if [[ $status == "$1" ]] && { [[ -z ${3:-} ]] || grep -q -- "$3" "$body"; }; then
+    status=$(curl -sS -o "$body" -w '%{http_code}' "$@" "$url") || status=000
+    if [[ $status == "$want" ]] && { [[ -z $pattern ]] || grep -q -- "$pattern" "$body"; }; then
       rm -f "$body"
-      echo "ok $1 $2"
+      echo "ok $want ${*:+$* }$url"
       return 0
     fi
     rm -f "$body"
     sleep 10
   done
-  echo "::error::expected $1${3:+ containing $3} from $2, last got $status" >&2
+  echo "::error::expected $want${pattern:+ containing $pattern} from ${*:+$* }$url, last got $status" >&2
   return 1
 }
 expect 200 "$BASE_URL/" "${assets[0]}"
@@ -184,6 +186,15 @@ expect 400 "$BASE_URL/api/v1/glyphs/not-an-id" '"code":"invalid_id"'
 expect 404 "$BASE_URL/g/00000000000000000000000000000000" "${assets[0]}"
 # The Function URL takes only CloudFront's signed requests.
 expect 403 "$(output function_url)healthz"
+# A POST reaches the app only when x-amz-content-sha256 matches its body, since
+# OAC signs with the viewer's value. The mode is invalid, so the app rejects it
+# before the rate limit and nothing is stored.
+sha256() { printf '%s' "$1" | sha256sum | cut -d' ' -f1; }
+smoke='{"mode":"smoke","reading":"ア"}'
+post=(-X POST -H 'Content-Type: application/json' --data-binary "$smoke")
+expect 422 "$BASE_URL/api/v1/glyphs" '"code":"invalid_input"' "${post[@]}" -H "x-amz-content-sha256: $(sha256 "$smoke")"
+expect 403 "$BASE_URL/api/v1/glyphs" '' "${post[@]}" -H "x-amz-content-sha256: $(sha256 tampered)"
+expect 403 "$BASE_URL/api/v1/glyphs" '' "${post[@]}"
 
 # Everything is live; only now record this commit. The plan changes the output
 # alone, so no resource is touched.
