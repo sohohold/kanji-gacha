@@ -102,16 +102,18 @@ if [[ -z $BASE_URL ]]; then
     BASE_URL=$(output base_url)
   fi
 fi
-args=(-var "image_uri=$image" -var "release=$RELEASE" -var "generation_enabled=$GENERATION_ENABLED")
-if [[ -n $BASE_URL ]]; then
-  plan_apply "${args[@]}" -var "base_url=$BASE_URL"
-else
+# The previous release marker is kept until the static files are published and
+# the smoke test passes, so a run that fails partway never makes older commits
+# look superseded.
+args=(-var "image_uri=$image" -var "generation_enabled=$GENERATION_ENABLED")
+if [[ -z $BASE_URL ]]; then
   # The CloudFront domain exists only after the first apply; until the second
   # apply sets it, share links point at localhost and must not be published.
-  plan_apply "${args[@]}"
+  plan_apply "${args[@]}" -var "release=$deployed"
   BASE_URL=$(output base_url)
-  plan_apply "${args[@]}" -var "base_url=$BASE_URL"
 fi
+args+=(-var "base_url=$BASE_URL")
+plan_apply "${args[@]}" -var "release=$deployed"
 
 aws s3 cp release-web/kanji-ui.otf "s3://$spa_bucket/kanji-ui.otf" --cache-control 'public,max-age=86400'
 aws s3 cp release-web/index.html "s3://$spa_bucket/index.html" --cache-control 'no-cache'
@@ -154,4 +156,8 @@ expect 400 "$BASE_URL/api/v1/glyphs/not-an-id" '"code":"invalid_id"'
 expect 404 "$BASE_URL/g/00000000000000000000000000000000" "${assets[0]}"
 # The Function URL takes only CloudFront's signed requests.
 expect 403 "$(output function_url)healthz"
+
+# Everything is live; only now record this commit. The plan changes the output
+# alone, so no resource is touched.
+plan_apply "${args[@]}" -var "release=$RELEASE"
 echo "deployed $RELEASE to $BASE_URL"

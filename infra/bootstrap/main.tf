@@ -192,10 +192,11 @@ resource "aws_iam_role_policy" "deploy" {
     ] },
 
     # CloudFront IDs are assigned on creation, so these cannot be scoped by ARN.
-    # Deletes are not granted.
+    # Deletes are not granted. With default_tags the provider creates the
+    # distribution through CreateDistributionWithTags, a separate action.
     { Sid = "CloudFront", Effect = "Allow", Resource = "*", Action = [
       "cloudfront:Get*", "cloudfront:List*",
-      "cloudfront:CreateDistribution", "cloudfront:UpdateDistribution", "cloudfront:TagResource", "cloudfront:UntagResource",
+      "cloudfront:CreateDistribution", "cloudfront:CreateDistributionWithTags", "cloudfront:UpdateDistribution", "cloudfront:TagResource", "cloudfront:UntagResource",
       "cloudfront:CreateCachePolicy", "cloudfront:UpdateCachePolicy",
       "cloudfront:CreateOriginRequestPolicy", "cloudfront:UpdateOriginRequestPolicy",
       "cloudfront:CreateOriginAccessControl", "cloudfront:UpdateOriginAccessControl",
