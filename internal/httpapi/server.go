@@ -10,6 +10,7 @@ import (
 	"kanji-gacha/internal/compose"
 	"kanji-gacha/internal/glyphid"
 	"kanji-gacha/internal/kana"
+	"kanji-gacha/internal/metrics"
 	"kanji-gacha/internal/model"
 	"kanji-gacha/internal/render"
 	"kanji-gacha/internal/store"
@@ -35,6 +36,7 @@ type Server struct {
 	WebDir            string
 	GenerationEnabled bool
 	TrustCloudFront   bool
+	Metrics           *metrics.EMF
 	Now               func() time.Time
 	mu                sync.Mutex
 	ips               map[string]bucket
@@ -236,11 +238,16 @@ func (s *Server) generate(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
+	// The draw is counted once the generator returns, whether or not saving it
+	// succeeds; a failed save is a storage problem, not a different draw.
+	start := time.Now()
 	g, e := s.Engine.Generate(ctx, reading, s.Now())
 	if e != nil {
+		s.Metrics.GenerationFailed()
 		problem(w, 503, "generation_failed", nil)
 		return
 	}
+	s.Metrics.Generated(time.Since(start), g.Rarity, g.Fallback)
 	// Moderation affects shared titles only; original input and generated shape are preserved.
 	g.OGPReading = sharedReading(g.Reading.Display)
 	for i := 0; i < 3; i++ {

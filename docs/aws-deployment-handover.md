@@ -1,112 +1,64 @@
 # AWSデプロイ整備の引き継ぎ（2026-09-23）
 
-## 今回の到達点と次の作業
+## 到達点と次の作業
 
-AWS認証エラーを解消し、ユーザーのターミナルで `terraform plan` が成功した。`infra/README.md` の未実装4項目（GitHub Actions用OIDCロール、applyを含むデプロイワークフロー、Budgets通知、EMF監視）は、コードを調査した結果、すべて実装可能と回答した。
+`infra/README.md` で未実装としていた4項目（GitHub Actions用OIDCロール、applyを含むデプロイワークフロー、Budgets通知、EMF監視）と、stateのS3共有化を実装した。コードとしての検証（Terraformのformat・validate、Goのテスト、ワークフローのlint、デプロイスクリプトの分岐）は済んでいるが、AWSへのapplyとGitHub側の設定はまだ行っていない。実装済みであることと、AWS上で動作を確認したことを混同しないこと。
 
-「今の構成を先にapplyするか、実装を進めるか」という相談には、stateの共有化も含めて実装を先に進め、その後に初期構築をapplyする順序を推奨した。ユーザーの直近の依頼は使用量上限に備えた引き継ぎドキュメントの作成であり、4項目の実装・AWSへのapplyはこの会話では行っていない。推奨した進め方と実施済み作業を混同しないこと。
+次の作業は、ユーザーの認証で `infra/bootstrap` を適用してstateをS3へ移し、GitHubに `production` Environmentと変数 `AWS_DEPLOY_ROLE_ARN` を設定し、初回デプロイを実行して結果を確認すること。手順は [infra/README.md](../infra/README.md) の「初回セットアップ」にある。初回のデプロイでデプロイロールの権限不足（`AccessDenied`）が見つかる可能性があり、その場合は該当アクションを `infra/bootstrap/main.tf` に追加する。
 
 プロジェクトの `AGENTS.md` により、サブエージェントは禁止。調査・実装・レビュー・検証はメインエージェントが直接行う。
 
 ## 確認済みの状態
 
 - リポジトリ：`git@github.com:sohohold/kanji-gacha.git`
-- AWSアカウント：`473536070013`
-- 配置先リージョン：`ap-northeast-1`
-- AWS CLIプロファイル：`kanji-gacha`
-- ユーザーが提示した認証先：`arn:aws:iam::473536070013:user/root`
-  - これは名前が `root` のIAMユーザーを示すARNで、AWSアカウントのルートユーザーARNではない。作成権限の詳細は未確認。
-- ローカルで確認したTerraform：`1.11.4`
-- `infra/main.tf` のTerraform制約：`>= 1.6.0`
-- `infra/.terraform.lock.hcl` のAWS Provider：`6.66.0`（制約 `~> 6.0`）
-- Terraform stateはローカル保存。リモートバックエンドは未実装。
-- `.github/workflows/ci.yml` は存在するが、デプロイワークフローはない。
-- 引き継ぎ文書作成前の `git status --short` は空だった。再開時には改めて確認する。
+- AWSアカウント：`473536070013`、配置先リージョン：`ap-northeast-1`、AWS CLIプロファイル：`kanji-gacha`
+- ユーザーが提示した認証先：`arn:aws:iam::473536070013:user/root`（名前が `root` のIAMユーザーで、ルートユーザーではない。IAM・Budgetsの作成権限は未確認）
+- ユーザーのTerraform：`1.11.4`。構成の制約は `>= 1.10.0`（S3ネイティブロックのため引き上げた）。Actionsも1.11.4
+- AWS Provider：`6.66.0`（制約 `~> 6.0`）。`infra/bootstrap/.terraform.lock.hcl` はアプリ側と同じ内容
+- 認証は `aws login --profile kanji-gacha --region ap-northeast-1 --remote`（AWS CLI 2.32.0以降）で成功した。SSOは未設定。`infra/README.md` にこの経路を反映済み
+- 以前の変更前の構成で `terraform plan` が `14 to add` で成功したことはユーザーの報告による。今回の変更後の構成ではAWS認証付きのplanを実行していない（この作業環境にはAWS認証がない）
 
-### 認証について
+## 実装した内容
 
-ユーザーはIAM Identity Center（SSO）を設定していない。最初に案内した `aws configure sso` は使わず、次のブラウザ認証でログインできた。
+### stateとbootstrap（`infra/bootstrap`）
 
-```bash
-aws login --profile kanji-gacha --region ap-northeast-1 --remote
-export AWS_PROFILE=kanji-gacha
-aws sts get-caller-identity
-```
+stateバケット `kanji-gacha-473536070013-tfstate`（非公開・SSE-S3・バージョニング・旧版90日削除・HTTPSのみ・`prevent_destroy`）、GitHub OIDC Provider（既存があれば `github_oidc_provider_arn` で再利用）、デプロイロール `kanji-gacha-deploy`、Lambda実行ロールの権限境界 `kanji-gacha-lambda-boundary`、Budgetを作る。バケットを自ら作るため、初回は `local_override.tf` でローカルstateにして適用し、その後 `init -migrate-state` でS3の `bootstrap/terraform.tfstate` へ移す。アプリのstateは `app/terraform.tfstate`。バックエンドのバケット名は変数を使えないため `backend.tf` に直接書いた。
 
-`aws login` はAWS CLI 2.32.0以降の機能。セッションが切れたら再ログインする。AWS skills / MCPの追加設定を尋ねられた際は `n` でよいと案内した。
+デプロイロールの信頼条件は `aud=sts.amazonaws.com` と `sub=repo:sohohold/kanji-gacha:environment:production`。ブランチの制限はGitHubのEnvironment側（Deployment branchesを `main` のみ）で行う前提で、その設定はまだされていない。権限はアプリ名のARNへ絞り、削除系は与えていない。CloudFrontはARNで絞れないため操作の種類だけを限定した。
 
-以前のエージェント環境では `aws` コマンド・認証設定が見つからず、sudoも制限されていた。その後のインストール・ログイン・plan成功はユーザーのターミナルから報告されたもの。次のエージェントが同じ認証を利用できるとは限らないため、実行環境を確認する。
+Lambda実行ロールをデプロイロールが変更できると、インラインポリシー経由で権限を広げられる。これを防ぐため、アプリ側の `aws_iam_role.lambda` に権限境界を付け、デプロイロールは境界が付いている場合だけ `CreateRole`・`PutRolePolicy` 等を行えるようにした。そのためbootstrapをアプリ構成より先に適用する必要がある。
 
-`infra/README.md` にはこの会話で追加した認証手順があるが、SSOと既存アクセスキーの説明が中心で、成功した `aws login` の経路はまだ反映していない。次の文書更新で補う。
+### デプロイ（`.github/workflows/deploy.yml`、`scripts/deploy.sh`）
 
-### 成功したplan
+CIが `main` へのpushで成功したときに `workflow_run` で動く。手動実行は `main` のみ。`vars.AWS_DEPLOY_ROLE_ARN` が未設定の間はジョブ自体をスキップする。同時実行は1つで、実行中は取り消さない。GitHubは待機中の実行を1つしか残さず後着で取り消すため、各実行はトリガーのコミットではなく、mainでCIが成功した最新のコミットを調べてデプロイする（CI完了で起動した実行は、それが既にデプロイ済みなら終了）。処理本体は `scripts/deploy.sh` にあり、人の認証で手元から実行しても同じ手順になる。
 
-ユーザー添付の出力では `data.aws_caller_identity.current` の読み取りが成功し、結果は次のとおり。
+主な判断：イメージタグはコミットSHAで、同じコミットの再実行では既存イメージを再利用する。stateの出力 `release` に前回のコミットを記録し、それより古いコミットは適用しない。`release` は疎通確認まで成功した後の最後のapply（出力だけが変わる）で更新する。planに削除・置換が含まれれば中止する（空の `image_uri` による削除を防ぐ）。`base_url` はLambdaに設定済みの値（出力 `configured_base_url`）か `vars.BASE_URL` を必ず渡す。`BASE_URL` のホストがCloudFrontのドメインか別名でなければ中止する（独自ドメイン用の別名・ACM証明書はまだTerraformにない）。静的ファイルはpushしたdigestのイメージから取り出し、ハッシュ付きアセットはapply前に追加、`index.html` はapply後に更新し、旧アセットは削除しない。疎通確認はPOSTせず、トップ・アセット・フォント・APIの400・共有ページの404・Function URL直接呼び出しの403を見る。`GENERATION_ENABLED` はリポジトリ変数で管理する。
 
-```text
-Plan: 14 to add, 0 to change, 0 to destroy.
-```
+Dockerfileのweb・Goステージを `--platform=$BUILDPLATFORM` にし、Goを `GOARCH=$TARGETARCH` でクロスコンパイルするよう変えた。amd64ランナーでQEMUなしにarm64イメージを作るため。
 
-内訳：ECRリポジトリ・ポリシー・ライフサイクル、S3バケット2個・公開ブロック2個、Lambda実行ロール・ポリシー、ロググループ、CloudFrontキャッシュポリシー・オリジンリクエストポリシー・OAC2個。
+スクリプトの分岐（初回の2段階apply、同じコミットの再実行、生成停止、古いコミットのスキップ、削除を含むplanでの中止）は、terraform・aws・docker・curlのスタブで確認した。実際のAWSとDockerイメージでの実行はしていない。この作業環境ではpublic.ecr.awsへの接続が拒否されたため、イメージ全体のビルドもできなかった（Goステージがamd64で動くこと、arm64の静的バイナリができることは確認した）。
 
-`image_uri=""` の初期構成なので、Lambda関数・Function URL・CloudFront distributionはまだplanに含まれない。plan成功は認証と計画生成の確認であり、作成権限やアプリの実動作まで検証したものではない。保存済みplan（`-out`）もない。会話中にapply成功の報告はない。
+### Budgets通知
 
-## 推奨する実装順序
+bootstrapの `aws_budgets_budget` で、アカウント全体の月額実コストが `budget_limit_usd`（既定1 USD）を超えたら `budget_emails` へメールする。通知先はユーザー未提供のため必須変数にし、`infra/bootstrap/terraform.tfvars`（`.gitignore` 済み）に書く想定。アプリ限定の予算はコスト配分タグの設計が必要なので見送った。
 
-### 1. state保存先とOIDCの初期構築
+### EMF監視
 
-- アプリ用stateをS3へ保存し、ロックを有効化する。S3のネイティブロック（`use_lockfile = true`）を使うならTerraformの最低バージョンを1.10以上へ更新し、CIと揃える。
-- stateバケットは非公開・暗号化・バージョニングを設定。アプリ用バケットとは分離する。
-- state保存先自体とOIDCロールは、手元の認証で初回構築する。アプリの通常デプロイから独立したbootstrap構成を検討し、そのstateの保管方法も文書化する。
-- 既にstateやAWSリソースが存在する場合は移行・importを検討する。今回のplanだけでアカウント全体が空だとは判断しない。
-- GitHub用OIDC Providerが既にあるか読み取りで確認し、既存なら再利用する。
-- ロールの信頼条件は `sohohold/kanji-gacha` の対象ブランチまたはGitHub Environmentへ限定し、`aud` も指定する。Environmentを使う場合はOIDCの `sub` の形式がブランチ指定と異なる。
-- ECR push、Terraform管理リソース、state、S3同期、CloudFront無効化に必要な権限を設計する。`iam:PassRole` は対象のLambda実行ロールへ限定する。
+`internal/metrics` を追加し、`METRICS_NAMESPACE` が設定されているとAPIが生成ごとにEMFのJSONを1行標準出力へ書く。Terraformで `KanjiGacha` を設定した。メトリクスは `GenerationTime`（生成器のみ、成功時）、`Glyphs`（`Rarity` ディメンション）、`Fallback`、`GenerationFailed` の計8個で、無料枠の10個以内。入力・ID・IPは書かない。保存失敗でも抽選は数え、検証エラー・停止中・レート制限は数えない。これらはテストで確認した。ダッシュボードとアラームは閾値が未決定のため作っていない。
 
-### 2. デプロイワークフロー
+## 未決定・未確認の事項
 
-仕様書ではmainへのpushで実行する想定。現在のCIと連携させ、テスト失敗時にはデプロイしない構成を設計する。
-
-流れ：OIDC認証 → 初期リソースの確認・構築 → arm64イメージのbuild/push → digestを指定してplan/apply → 公開URLの反映 → 同じイメージから取り出した静的ファイルをS3へ同期 → CloudFront無効化 → 疎通確認。
-
-注意点：
-
-- ECRはタグ上書き不可。コミットSHAだけでは再実行時に衝突しうるので、イメージの再利用または一意のタグを設計する。
-- Lambda用buildには現手順の `--platform linux/arm64 --provenance=false` を引き継ぐ。
-- 初回はCloudFront URL確定後に `base_url` を反映する2段階構成。途中の `localhost` の共有URLを公開完了扱いにしない。
-- 更新時に `image_uri`・`base_url` を省略して既定値へ戻さない。空の `image_uri` はLambda等の削除計画につながる。
-- 静的ファイルは必ずデプロイするイメージから抽出する。手元で別途ビルドした `web/dist` は使わない。
-- 旧HTMLが参照するハッシュ付きアセットは、キャッシュ寿命を超えるまで保持する。
-- stateロックに加えActionsの同時デプロイも制御する。apply途中の安易なキャンセルを避ける。
-
-### 3. Budgets通知
-
-- `spec.md` 7.3の要件は月1 USD超過時のメール通知。通知先メールアドレスは未提供。
-- 月額・通知先を変数として実装できる。アカウント全体を対象にするか、このアプリだけにするかは未決定。アプリ限定ならコスト配分タグ等の設計が必要。
-- 通知は利用停止機能ではない。既存の `generation_enabled` による新規生成停止とは別。
-
-### 4. EMF監視
-
-- `spec.md` の要件は生成時間・レアリティ分布。実装箇所候補は `internal/httpapi/server.go` の生成処理と `cmd/api/main.go` の初期化。
-- EMF形式のJSONをログへ出し、CloudWatchでメトリクスとして抽出させる。通常の `log.Printf` の日時プレフィックス等でEMFのJSON形式を壊さないこと。
-- 入力本文・SVG・IP・生成IDをメトリクスのディメンションにしない。ディメンションの種類を抑え、カスタムメトリクス費用を考慮する。
-- 生成時間の範囲（生成エンジンだけか保存込みか）を明確化し、失敗時・退避時の扱いもテストする。
-- メトリクス出力、可視化、アラーム通知のどこまでを実装するかを明確にする。現時点ではアラーム閾値は未決定。
-
-## 検証と完了条件
-
-- Terraform：format、validate、実際の認証でplanし、意図した追加・変更だけか確認する。
-- Go変更：EMFのJSON構造・計測範囲・失敗時の扱いをテストし、`go vet ./...` と `go test -race ./...` を実行する。
-- ワークフロー：YAML、OIDC条件、変数の受け渡し、初回と更新・再実行を検証する。
-- AWS側：OIDCでのロール引受、Actions経由のデプロイ、Budgets設定、CloudWatchのメトリクス抽出を確認する。
-- CloudFront経由のPOST→GET→共有HTML→OGP、POST本文ハッシュ有無・改変、Function URL直接呼び出しの拒否を確認する。
+- Budgetsの通知先メールアドレス、アカウント全体かアプリ限定か。
+- GitHub Environment `production` のDeployment branches設定と、Required reviewersを付けるか。
+- メトリクスのアラーム閾値と通知先。
+- AWS上での確認一式：bootstrapとアプリのapply、OIDCでのロール引受、Actions経由のデプロイ、Budgets設定、CloudWatchのメトリクス抽出、CloudFront経由のPOST→GET→共有HTML→OGP、POST本文ハッシュ有無・改変、Function URL直接呼び出しの拒否。
 - その他の実測残件（閲覧者IP、退避率、コールドスタート、S3競合）は既存の [handover.md](handover.md) を参照する。
 
 ## 参照先
 
-- [配置手順](../infra/README.md)、[Terraform](../infra/main.tf)、[仕様書](../spec.md)、[既存CI](../.github/workflows/ci.yml)
+- [配置手順](../infra/README.md)、[bootstrap](../infra/bootstrap/main.tf)、[アプリのTerraform](../infra/main.tf)、[デプロイスクリプト](../scripts/deploy.sh)、[デプロイワークフロー](../.github/workflows/deploy.yml)、[仕様書](../spec.md)
 - [AWS CLIのブラウザ認証](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sign-in.html)
 - [GitHub ActionsのAWS OIDC](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws)
 - [Terraform S3 backend](https://developer.hashicorp.com/terraform/language/backend/s3)
 - [Terraform Budgets](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/budgets_budget)
-- [CloudWatch EMF仕様](https://docs.aws.amazon.com/en_en/AmazonCloudWatch/latest/monitoring/CloudWatch_Embedded_Metric_Format_Specification.html)
+- [CloudWatch EMF仕様](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch_Embedded_Metric_Format_Specification.html)

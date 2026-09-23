@@ -8,6 +8,7 @@ import (
 	"kanji-gacha/config"
 	"kanji-gacha/internal/compose"
 	"kanji-gacha/internal/dict"
+	"kanji-gacha/internal/metrics"
 	"kanji-gacha/internal/model"
 	"kanji-gacha/internal/store"
 	"net/http/httptest"
@@ -389,5 +390,65 @@ func TestRateLimitIgnoresViewerPort(t *testing.T) {
 	}
 	if _, ok := s.ips["2001:db8::1"]; !ok {
 		t.Fatalf("rate limit keyed on %v", s.ips)
+	}
+}
+
+// Each draw writes one metric record naming its rarity and nothing that
+// identifies the request; requests that never reach the generator write none.
+func TestGenerateMetrics(t *testing.T) {
+	s := setup(t)
+	var buf bytes.Buffer
+	s.Metrics = metrics.NewEMF(&buf, "KanjiGacha")
+	w := call(s, "POST", "/api/v1/glyphs", `{"mode":"on","reading":"セイ"}`)
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var g model.Glyph
+	json.Unmarshal(w.Body.Bytes(), &g)
+	lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("want one record, got %q", buf.String())
+	}
+	var rec map[string]any
+	if e := json.Unmarshal([]byte(lines[0]), &rec); e != nil {
+		t.Fatal(e)
+	}
+	fb := 0.0
+	if g.Fallback {
+		fb = 1
+	}
+	if rec["Rarity"] != g.Rarity || rec["Glyphs"] != 1.0 || rec["Fallback"] != fb {
+		t.Fatalf("record %v does not match glyph rarity %s fallback %v", rec, g.Rarity, g.Fallback)
+	}
+	if ms, ok := rec["GenerationTime"].(float64); !ok || ms < 0 {
+		t.Fatal("generation time", rec["GenerationTime"])
+	}
+	for _, leak := range []string{g.ID, "セイ", g.Reading.Display, "svg", "127.0.0.1", "192.0.2.1"} {
+		if leak != "" && strings.Contains(buf.String(), leak) {
+			t.Fatalf("record carries %q: %s", leak, buf.String())
+		}
+	}
+
+	// A save failure is still a completed draw.
+	buf.Reset()
+	s.Store = broken{}
+	if w := call(s, "POST", "/api/v1/glyphs", `{"mode":"on","reading":"セイ"}`); w.Code != 503 {
+		t.Fatal(w.Code)
+	}
+	if strings.Count(buf.String(), `"Glyphs":1`) != 1 {
+		t.Fatalf("save failure: %q", buf.String())
+	}
+
+	buf.Reset()
+	call(s, "POST", "/api/v1/glyphs", `{"mode":"on","reading":"漢"}`)
+	s.GenerationEnabled = false
+	call(s, "POST", "/api/v1/glyphs", `{"mode":"on","reading":"セイ"}`)
+	s.GenerationEnabled = true
+	s.ips["192.0.2.1"] = bucket{tokens: 0, seen: s.Now()}
+	if w := call(s, "POST", "/api/v1/glyphs", `{"mode":"on","reading":"セイ"}`); w.Code != 429 {
+		t.Fatal("rate limit not reached", w.Code)
+	}
+	if buf.Len() != 0 {
+		t.Fatalf("rejected requests recorded metrics: %q", buf.String())
 	}
 }

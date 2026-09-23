@@ -14,3 +14,8 @@ test-results/
 *.tsbuildinfo
 
 .claude/settings.local.json
+
+override.tf
+*_override.tf
+release-web/
+terraform.tfvars

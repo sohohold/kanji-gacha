@@ -398,7 +398,7 @@ TDD は、依存の少ない純関数から外側へ向かう順で進める。�
 | --- | --- | --- |
 | `ci.yml` | PR | golangci-lint、`go test -race`、短時間 fuzz（30秒）、Biome、Vitest、型チェック、カバレッジ閾値（BE 80%） |
 | `e2e.yml` | PR（ラベル付き）・main | docker compose で起動し Playwright |
-| `deploy.yml` | main への push | Terraform plan/apply（OIDC）、イメージを ECR へ push して Lambda 更新、S3 同期、CloudFront 無効化 |
+| `deploy.yml` | main への push（CI成功後） | Terraform plan/apply（OIDC）、イメージを ECR へ push して Lambda 更新、S3 同期、CloudFront 無効化 |
 | `fuzz-nightly.yml` | 毎日 | fuzz を 10分実行し、見つかったコーパスを Issue 化 |
 
 ## 9. Go の強みを活かす設計と技術記事ネタ

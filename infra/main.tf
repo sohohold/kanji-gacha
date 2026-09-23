@@ -1,10 +1,21 @@
 terraform {
-  required_version = ">= 1.6.0"
+  required_version = ">= 1.10.0"
   required_providers {
     aws = { source = "hashicorp/aws", version = "~> 6.0" }
   }
 }
-provider "aws" { region = var.region }
+# Tags on every resource that supports them. Project is the cost allocation key
+# (activate it in Billing once); Component separates this from infra/bootstrap.
+provider "aws" {
+  region = var.region
+  default_tags {
+    tags = {
+      Project   = var.name
+      Component = "app"
+      ManagedBy = "terraform"
+    }
+  }
+}
 variable "region" { default = "ap-northeast-1" }
 variable "name" { default = "kanji-gacha" }
 variable "image_uri" {
@@ -12,7 +23,15 @@ variable "image_uri" {
   default     = ""
   description = "ECR image digest URI; empty creates bootstrap storage and ECR only."
 }
-variable "generation_enabled" { default = true }
+variable "release" {
+  type        = string
+  default     = ""
+  description = "Commit the deploy workflow applied; kept in state so an older run does not overwrite a newer deploy."
+}
+variable "generation_enabled" {
+  type    = bool
+  default = true
+}
 data "aws_caller_identity" "current" {}
 locals {
   deploy = var.image_uri != ""
@@ -46,8 +65,11 @@ resource "aws_s3_bucket_public_access_block" "private" {
   restrict_public_buckets = true
 }
 resource "aws_iam_role" "lambda" {
-  name               = "${var.name}-lambda"
-  assume_role_policy = jsonencode({ Version = "2012-10-17", Statement = [{ Effect = "Allow", Principal = { Service = "lambda.amazonaws.com" }, Action = "sts:AssumeRole" }] })
+  name = "${var.name}-lambda"
+  # Created by infra/bootstrap. The deploy role may change this role only while
+  # the boundary is attached.
+  permissions_boundary = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/${var.name}-lambda-boundary"
+  assume_role_policy   = jsonencode({ Version = "2012-10-17", Statement = [{ Effect = "Allow", Principal = { Service = "lambda.amazonaws.com" }, Action = "sts:AssumeRole" }] })
 }
 resource "aws_cloudwatch_log_group" "app" {
   name              = "/aws/lambda/${var.name}"
@@ -87,6 +109,7 @@ resource "aws_lambda_function" "app" {
       BASE_URL           = var.base_url
       GENERATION_ENABLED = tostring(var.generation_enabled)
       TRUST_CLOUDFRONT   = "true"
+      METRICS_NAMESPACE  = "KanjiGacha"
     }
   }
   depends_on = [aws_iam_role_policy.lambda]
@@ -217,4 +240,11 @@ output "repository_url" { value = aws_ecr_repository.app.repository_url }
 output "spa_bucket" { value = aws_s3_bucket.spa.id }
 output "results_bucket" { value = aws_s3_bucket.results.id }
 output "base_url" { value = local.deploy ? "https://${aws_cloudfront_distribution.app[0].domain_name}" : null }
+# The BASE_URL the Lambda was given, which differs from base_url once a custom
+# domain is set. The deploy script keeps it when no URL is passed.
+output "configured_base_url" { value = local.deploy ? var.base_url : null }
 output "distribution_id" { value = local.deploy ? aws_cloudfront_distribution.app[0].id : null }
+output "release" { value = var.release }
+# Read back by the manual apply in infra/README.md so it keeps a pause in place.
+output "generation_enabled" { value = var.generation_enabled }
+output "function_url" { value = local.deploy ? aws_lambda_function_url.app[0].function_url : null }
