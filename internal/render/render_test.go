@@ -17,8 +17,12 @@ func TestRelativeSmooth(t *testing.T) {
 		t.Fatalf("%+v", s[1])
 	}
 }
-func TestBiangPNG(t *testing.T) {
-	b, e := PNG(context.Background(), model.Glyph{SVG: Biang, OGPReading: "ビャン", Rarity: "UR", Strokes: 58})
+func TestPNGSize(t *testing.T) {
+	s, e := ParsePath("M20,20L89,89M89,20L20,89")
+	if e != nil {
+		t.Fatal(e)
+	}
+	b, e := PNG(context.Background(), model.Glyph{SVG: SVG([]model.Stroke{s}, 109, 2.5, "test"), OGPReading: "テスト", Rarity: "N", Strokes: 2})
 	if e != nil {
 		t.Fatal(e)
 	}

@@ -324,19 +324,6 @@ func (e *Engine) Generate(ctx context.Context, r kana.Reading, now time.Time) (m
 	g := model.Glyph{SchemaVersion: 1, GeneratorVersion: 1, ConfigVersion: e.Config.Version, DictionaryVersion: e.Dict.Version, Key: r.Key(), Reading: r, CreatedAt: now.UTC(), Rarity: rarity.Name, License: render.License, OGPReading: r.Display}
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(e.Config.TimeoutMs)*time.Millisecond)
 	defer cancel()
-	if r.Reading == "ビャン" {
-		g.SVG = render.Biang
-		g.IDS = "𰻞"
-		g.Tree = &model.Node{Char: "𰻞", ComponentID: "noto:30ede"}
-		g.Strokes = 58
-		g.Rarity = "UR"
-		legend := "biang"
-		g.Legend = &legend
-		g.Components = []model.Component{{ID: "noto:30ede", Char: "𰻞", Role: "decor"}}
-		g.License = "Noto Sans CJK JP © Adobe, converted to outlines; SIL OFL 1.1"
-		return g, nil
-	}
-
 	// Ghost glyphs come from the same pinned dictionary and follow the same storage path.
 	jst := now.In(time.FixedZone("JST", 9*3600))
 	ghost := 0.003

@@ -4,18 +4,6 @@ b94cd83（初期実装）に対するコードレビュー10件のうち、仕�
 
 本書はそのあとに残る作業を、判断の要るもの、本番環境でしか確かめられないもの、優先度の低い改善の順に記す。
 
-## 1. 仕様判断が必要なもの
-
-### 1.1 ビャンの `ids`
-
-`internal/compose/compose.go` の `Generate` は、特定入力「ビャン」に対して `g.IDS = "𰻞"` と字そのものを入れている。これは IDS（配置木の記述）ではない。
-
-spec 3.7 は「IDSや画数が確定しない素材は該当値を null」とする一方、`api/openapi.yaml` の `Glyph` スキーマは `ids` を必須かつ `type: string`（null 不可）としており、両者が矛盾している。どちらに合わせるかを決める必要がある。
-
-仕様に合わせる場合は、`model.Glyph.IDS` を `*string` にしてビャンでは nil とし、OpenAPI を `ids: {type: [string, 'null']}` に改め、`web/` で `pnpm run types` を実行して `src/api.generated.ts` を再生成する。フロントは `web/src/main.tsx` の `<span className="ids">` を null のとき省く。保存済みの JSON は string のまま `*string` にデコードできるので、`schemaVersion` は 1 のままでよい。`internal/compose/compose_test.go` の `TestGenerationLimits` はビャンを含む全入力で `g.IDS == ""` を失敗扱いにしているので、ビャンだけ null を許すよう直す必要がある。
-
-スキーマに合わせる場合は、spec 3.7 を「IDS を持たない素材は字そのものを入れる」と改める。コードの変更は要らない。
-
 ## 2. 本番環境での実測が必要なもの
 
 いずれもローカルの Go テストや MinIO では確かめられない。デプロイ後に CloudFront 経由で確認する。

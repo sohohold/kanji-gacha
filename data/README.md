@@ -22,12 +22,10 @@ go test ./internal/dict ./internal/compose ./internal/render
 
 ## フォント素材
 
-OGP用の `internal/render/assets/NotoSansJP.otf` はNoto Sans CJK JP RegularからASCII・かな・必要な見出し文字等に絞った静的OTF。`biang.svg` は同じフォントのU+30EDEを109×109へ座標変換したものです。画面用の `web/public/kanji-ui.otf` には辞書内の漢字とIDS記号も含めています。辞書更新後の再構築は `scripts/build-font.py` を使います。
+OGP用の `internal/render/assets/NotoSansJP.otf` はNoto Sans CJK JP RegularからASCII・かな・必要な見出し文字等に絞った静的OTF。画面用の `web/public/kanji-ui.otf` には辞書内の漢字とIDS記号も含めています。辞書更新後の再構築は `scripts/build-font.py` を使います。
 
 ```sh
 uv run --with fonttools python scripts/build-font.py /path/to/NotoSansCJKjp-Regular.otf
 ```
 
 出典: https://github.com/notofonts/noto-cjk/tree/main/Sans/OTF/Japanese
-
-ビャンの58画は [Unicode Technical Note #43](https://www.unicode.org/notes/tn43/tn43-4.pdf) のU+30EDE記載によります。
