@@ -42,14 +42,35 @@ const reactions: Record<Glyph["rarity"], [string[], number]> = {
   SSR: [["🤯", "💎", "🌈", "🏆", "🎆", "😱", "🧡", "🚀"], 80],
   UR: [["👑", "🐉", "🌟", "💰", "🎇", "🙏", "😭", "🌈", "⛩️"], 130],
 };
-function burst(rarity: Glyph["rarity"]) {
+// 絵文字はウィンドウの周囲（外側に少し広げた範囲）だけで打ち上げる。
+// 書き順の描画が終わるまで出し続け、何が上がったか見届けられるようにする。
+function burst(win: HTMLElement, rarity: Glyph["rarity"], strokes: number) {
   const [emojis, count] = reactions[rarity];
   const emoji = emojis[Math.floor(Math.random() * emojis.length)];
   const layer = document.createElement("div");
   layer.className = "reactions";
   layer.setAttribute("aria-hidden", "true");
+  const pad = 56;
+  // offset* は bounceIn の拡大縮小を含まない本来の位置と大きさ。
+  const left = Math.max(0, win.offsetLeft - pad);
+  const width = Math.min(
+    document.documentElement.clientWidth - left,
+    win.offsetWidth + pad * 2,
+  );
+  const top = Math.max(0, win.offsetTop - pad);
+  // ページ末尾を越えるとスクロールが生じるので、文書の高さで切る。
+  const h = Math.min(
+    document.documentElement.scrollHeight - top,
+    win.offsetTop + win.offsetHeight + pad - top,
+  );
+  Object.assign(layer.style, {
+    left: `${left}px`,
+    top: `${top}px`,
+    width: `${width}px`,
+    height: `${h}px`,
+  });
   document.body.append(layer);
-  const h = innerHeight;
+  const spread = Math.max(2400, strokes * 130 + 1600);
   for (let i = 0; i < count; i++) {
     const el = document.createElement("span");
     el.textContent = emoji;
@@ -77,8 +98,8 @@ function burst(rarity: Glyph["rarity"]) {
         },
       ],
       {
-        duration: 2200 + Math.random() * 1600,
-        delay: 500 + Math.random() * (800 + count * 18),
+        duration: 3200 + Math.random() * 1800,
+        delay: 400 + Math.random() * spread,
         easing: "cubic-bezier(.25,.6,.4,1)",
         fill: "both",
       },
@@ -205,7 +226,9 @@ function App() {
       matchMedia("(prefers-reduced-motion: reduce)").matches
     )
       return;
-    return burst(g.rarity);
+    const win = document.querySelector<HTMLElement>(".window.result");
+    if (!win) return;
+    return burst(win, g.rarity, g.strokes);
   }, [inResult, g?.id]);
   const url = g ? new URL(`/g/${g.id}`, location.origin).href : "";
   const hits = g
@@ -269,7 +292,7 @@ function App() {
                   </fieldset>
                   {hits.length > 0 && (
                     <fieldset className="hits">
-                      <legend>ヒットした漢字</legend>
+                      <legend>ベース</legend>
                       <ul>
                         {hits.map((c) => (
                           <li key={c} className="sunken">

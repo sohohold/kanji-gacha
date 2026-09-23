@@ -145,8 +145,10 @@ fieldset {
 }
 .notice {
   color: var(--navy);
-  min-height: 14px;
   margin: 6px 0 0;
+}
+.notice:empty {
+  margin: 0;
 }
 .hits ul {
   display: flex;
@@ -188,8 +190,7 @@ fieldset {
   animation: rubber-band 1s 0.7s both;
 }
 .reactions {
-  position: fixed;
-  inset: 0;
+  position: absolute;
   overflow: hidden;
   pointer-events: none;
   z-index: 10;
