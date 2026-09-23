@@ -263,8 +263,12 @@ func coreSize(r config.Rarity, rng *rand.Rand) int {
 // inside out by radicals drawn independently of the reading.
 func (e *Engine) attempt(ph candidate, count, depth int, rng *rand.Rand, cores int) (result, error) {
 	cores = max(1, min(cores, count, 4))
-	coreDepth := map[int]int{1: 0, 2: 1, 3: 2, 4: 2}[cores]
-	wraps := min(count-cores, depth-coreDepth)
+	coreDepth := map[int]int{1: 0, 2: 1, 3: 2, 4: 2}
+	// 意符1つごとに深さが1増えるので、深さが足りないときは音符の重ねを増やして選んだ部品数を保つ。
+	for cores < min(count, 4) && cores+depth-coreDepth[cores] < count {
+		cores++
+	}
+	wraps := min(count-cores, depth-coreDepth[cores])
 	if len(e.rads) == 0 {
 		wraps = 0
 	}

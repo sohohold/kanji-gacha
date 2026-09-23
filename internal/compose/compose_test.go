@@ -149,6 +149,33 @@ func TestFallbackHasRadical(t *testing.T) {
 	}
 }
 
+// Every part count a rarity may draw must be reachable within its depth limit
+// for every core size coreSize can pick, or the advertised range is skewed.
+func TestRarityPartCountsReachable(t *testing.T) {
+	e := testEngine(t)
+	r, _ := kana.Validate(kana.Input{Mode: "on", Reading: "セイ"})
+	ph := e.rank(r.Morae, r.Mode, r.Okurigana)[0]
+	rng := rand.New(rand.NewChaCha8([32]byte{4}))
+	cores := map[string][]int{"SSR": {1, 2, 3}, "UR": {2, 3, 4}}
+	for _, rarity := range e.Config.Rarities {
+		cs, ok := cores[rarity.Name]
+		if !ok {
+			cs = []int{1}
+		}
+		for n := rarity.MinParts; n <= rarity.MaxParts; n++ {
+			for _, c := range cs {
+				res, err := e.attempt(ph, n, rarity.MaxDepth, rng, c)
+				if err != nil {
+					continue
+				}
+				if len(res.components) != n {
+					t.Errorf("%s n=%d cores=%d: got %d components", rarity.Name, n, c, len(res.components))
+				}
+			}
+		}
+	}
+}
+
 func TestRadicalFramesHaveInnerBoxes(t *testing.T) {
 	e := testEngine(t)
 	frames := 0

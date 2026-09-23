@@ -8,7 +8,7 @@
     {"name":"N", "weight":7000, "minParts":2, "maxParts":2, "maxDepth":1, "temperature":0.3},
     {"name":"R", "weight":2000, "minParts":3, "maxParts":3, "maxDepth":2, "temperature":0.5},
     {"name":"SR", "weight":700, "minParts":4, "maxParts":5, "maxDepth":4, "temperature":0.8},
-    {"name":"SSR", "weight":250, "minParts":6, "maxParts":8, "maxDepth":6, "temperature":1.1},
-    {"name":"UR", "weight":50, "minParts":9, "maxParts":12, "maxDepth":8, "temperature":1.5}
+    {"name":"SSR", "weight":250, "minParts":6, "maxParts":8, "maxDepth":7, "temperature":1.1},
+    {"name":"UR", "weight":50, "minParts":9, "maxParts":10, "maxDepth":8, "temperature":1.5}
   ]
 }
