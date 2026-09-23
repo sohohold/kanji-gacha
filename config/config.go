@@ -40,6 +40,16 @@ type Config struct {
 	Rarities    []Rarity `json:"rarities"`
 }
 
+// MaxReachableParts is the largest part count the generator can build within a
+// tree depth: each radical adds one level around the phonetic core, and the core
+// holds at most four copies in two levels (internal/compose attempt).
+func MaxReachableParts(depth int) int {
+	if depth <= 1 {
+		return 2
+	}
+	return depth + 2
+}
+
 func Load(path string) (Config, error) {
 	b := defaults
 	var err error
@@ -56,9 +66,11 @@ func Load(path string) (Config, error) {
 	if c.Canvas <= 0 || c.Margin < c.StrokeWidth/2 || c.Margin*2 >= c.Canvas || c.Gap < 0 || c.StrokeWidth <= 0 || c.MinSlot <= 0 || c.MinRatio <= 0 || c.MaxRatio >= 1 || c.MinRatio > c.MaxRatio || c.MaxParts < 1 || c.MaxParts > 64 || c.MaxDepth < 1 || c.MaxDepth > 10 || c.MaxStrokes < 1 || c.MaxStrokes > 512 || c.Candidates < 1 || c.Candidates > 1024 || c.Workers < 1 || c.Workers > 8 || c.TimeoutMs < 1 || c.TimeoutMs > 5000 || c.TopK < 1 {
 		return c, fmt.Errorf("invalid generator limits")
 	}
+	// レアリティ名は公開APIの enum（api/openapi.yaml）と画面の演出表に合わせる。
+	names := map[string]bool{"N": true, "R": true, "SR": true, "SSR": true, "UR": true}
 	total := 0
 	for _, r := range c.Rarities {
-		if r.Name == "" || r.Weight <= 0 || r.MinParts < 1 || r.MaxParts < r.MinParts || r.MaxParts > c.MaxParts || r.MaxDepth < 1 || r.MaxDepth > c.MaxDepth || r.MaxParts > 1<<r.MaxDepth || r.Temperature <= 0 {
+		if !names[r.Name] || r.Weight <= 0 || r.MinParts < 1 || r.MaxParts < r.MinParts || r.MaxParts > c.MaxParts || r.MaxDepth < 1 || r.MaxDepth > c.MaxDepth || r.MaxParts > MaxReachableParts(r.MaxDepth) || r.Temperature <= 0 {
 			return c, fmt.Errorf("invalid rarity %s", r.Name)
 		}
 		total += r.Weight

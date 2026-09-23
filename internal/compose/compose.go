@@ -23,21 +23,28 @@ type Engine struct {
 	Dict   dict.Dictionary
 	byID   map[string]*dict.Part
 	whole  map[string]*dict.Part
-	frames []*dict.Part
+	byPos  map[[2]string][]*dict.Part
+	rads   []*radical
 }
 
 func New(c config.Config, d dict.Dictionary) *Engine {
-	e := &Engine{Config: c, Dict: d, byID: map[string]*dict.Part{}, whole: map[string]*dict.Part{}}
+	e := &Engine{Config: c, Dict: d, byID: map[string]*dict.Part{}, whole: map[string]*dict.Part{}, byPos: map[[2]string][]*dict.Part{}}
 	for i := range d.Parts {
 		p := &d.Parts[i]
 		e.byID[p.ID] = p
 		if p.Position == "whole" {
 			e.whole[p.Char] = p
 		}
-		if p.Inner != nil && p.Operator != "" {
-			e.frames = append(e.frames, p)
+		if p.Position == "right" || p.Position == "bottom" {
+			k := [2]string{p.Char, p.Position}
+			e.byPos[k] = append(e.byPos[k], p)
 		}
 	}
+	for _, ps := range e.byPos {
+		pos := ps[0].Position
+		sort.SliceStable(ps, func(i, j int) bool { return span(ps[i], pos) > span(ps[j], pos) })
+	}
+	e.rads = buildRadicals(d.Parts)
 	return e
 }
 
@@ -52,7 +59,8 @@ func (e *Engine) rank(morae []string, mode, okuri string) []candidate {
 	best := map[string]candidate{}
 	for i := range e.Dict.Parts {
 		p := &e.Dict.Parts[i]
-		if len(p.Paths) > e.Config.MaxStrokes {
+		// 音符は実在字から選び、置き場所に合う位置別字形は後で引き当てる。
+		if p.Position != "whole" || len(p.Paths) > e.Config.MaxStrokes {
 			continue
 		}
 		vec, readings := p.OnVector, p.On
@@ -72,8 +80,11 @@ func (e *Engine) rank(morae []string, mode, okuri string) []candidate {
 				break
 			}
 		}
-		// Avoid letting characters with many source variants dominate the top-k pool.
-		key := p.Char + ":" + p.Position
+		// 他の字の旁・脚として使われる字（青・干・生など）は音符らしく自然に収まるので優先する。
+		if len(e.byPos[[2]string{p.Char, "right"}])+len(e.byPos[[2]string{p.Char, "bottom"}]) > 0 {
+			score += 0.3
+		}
+		key := p.Char
 		old, ok := best[key]
 		if !ok || score > old.score {
 			best[key] = candidate{p, score}
@@ -95,88 +106,6 @@ func (e *Engine) rank(morae []string, mode, okuri string) []candidate {
 	return out
 }
 
-// slotKey maps a candidate's part count to the number of reading intervals it
-// can actually consume: a frame part occupies one slot without carrying a reading.
-func slotKey(parts int, frame bool) int {
-	if frame {
-		parts--
-	}
-	return min(3, max(1, parts))
-}
-
-// plans solves the segmentation DP once per distinct slot count, sharing a
-// single span cache so rank runs at most once per interval. Callers precompute
-// every slot count they may need before starting workers; the result is then
-// read-only and safe to share.
-func (e *Engine) plans(r kana.Reading, slots []int) map[int][][]candidate {
-	n := len(r.Morae)
-	cache := map[[2]int][]candidate{}
-	get := func(i, j int) []candidate {
-		key := [2]int{i, j}
-		v, ok := cache[key]
-		if !ok {
-			okuri := ""
-			if i == 0 && j == n {
-				okuri = r.Okurigana
-			}
-			v = e.rank(r.Morae[i:j], r.Mode, okuri)
-			cache[key] = v
-		}
-		return v
-	}
-	out := map[int][][]candidate{}
-	for _, s := range slots {
-		if _, done := out[s]; !done {
-			out[s] = e.segment(n, min(s, n), get)
-		}
-	}
-	return out
-}
-
-// segment uses DP to select up to kmax contiguous reading intervals.
-func (e *Engine) segment(n, kmax int, get func(int, int) []candidate) [][]candidate {
-	dp := make([][]float64, kmax+1)
-	prev := make([][]int, kmax+1)
-	for k := range dp {
-		dp[k] = make([]float64, n+1)
-		prev[k] = make([]int, n+1)
-		for j := range dp[k] {
-			dp[k][j] = math.Inf(-1)
-		}
-	}
-	dp[0][0] = 0
-	for k := 1; k <= kmax; k++ {
-		for j := k; j <= n; j++ {
-			for i := k - 1; i < j; i++ {
-				cs := get(i, j)
-				if len(cs) == 0 {
-					continue
-				}
-				score := dp[k-1][i] + cs[0].score*float64(j-i) - 0.08
-				if score > dp[k][j] {
-					dp[k][j] = score
-					prev[k][j] = i
-				}
-			}
-		}
-	}
-	k := 1
-	for a := 2; a <= kmax; a++ {
-		if dp[a][n] > dp[k][n] {
-			k = a
-		}
-	}
-	var out [][]candidate
-	for j := n; k > 0; k-- {
-		i := prev[k][j]
-		out = append(out, get(i, j))
-		j = i
-	}
-	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
-		out[i], out[j] = out[j], out[i]
-	}
-	return out
-}
 func choose(cs []candidate, t float64, rng *rand.Rand) candidate {
 	sum := 0.0
 	for _, c := range cs {
@@ -202,29 +131,44 @@ func (e *Engine) Rarity(rng *rand.Rand) config.Rarity {
 	return e.Config.Rarities[0]
 }
 func leaf(p *dict.Part) *model.Node { return &model.Node{ComponentID: p.ID, Char: p.Char} }
-func (e *Engine) tree(parts []*dict.Part, depth int, rng *rand.Rand) *model.Node {
-	if len(parts) == 1 {
-		return leaf(parts[0])
-	}
-	n := len(parts)
-	minLeft := max(1, n-(1<<(depth-1)))
-	maxLeft := min(n-1, 1<<(depth-1))
-	cut := minLeft + rng.IntN(maxLeft-minLeft+1)
-	op := "⿰"
-	if rng.IntN(2) == 0 {
-		op = "⿱"
-	}
-	if cut == 1 {
-		switch parts[0].Position {
-		case "left":
-			op = "⿰"
-		case "top":
-			op = "⿱"
-		}
-	}
-	return &model.Node{Operator: op, Children: []*model.Node{e.tree(parts[:cut], depth-1, rng), e.tree(parts[cut:], depth-1, rng)}}
+
+// plan carries per-node layout hints: which leaves are radicals and the inner
+// box of each frame node.
+type plan struct {
+	radical map[*model.Node]bool
+	inner   map[*model.Node]model.Box
 }
-func (e *Engine) layout(n *model.Node, b model.Box, rng *rand.Rand) ([]model.Stroke, float64, error) {
+
+// fitAspect maps a part into slot, stretching one axis at most maxStretch times
+// the other and centring the rest, so borrowed shapes keep their proportions.
+func fitAspect(p *dict.Part, slot model.Box, maxStretch float64) []model.Stroke {
+	sx, sy := slot.W/p.Bounds.W, slot.H/p.Bounds.H
+	to := slot
+	if sx > sy*maxStretch {
+		to.W = p.Bounds.W * sy * maxStretch
+		to.X += (slot.W - to.W) / 2
+	} else if sy > sx*maxStretch {
+		to.H = p.Bounds.H * sx * maxStretch
+		to.Y += (slot.H - to.H) / 2
+	}
+	return render.Fit(p.Paths, p.Bounds, to)
+}
+
+// sideShare is the fraction of the slot a radical leaf takes along the split
+// axis, derived from its natural proportions (偏は細く、冠は低く).
+func (e *Engine) sideShare(p *dict.Part, horizontal bool, b model.Box) float64 {
+	full := e.Config.Canvas - 2*e.Config.Margin
+	if horizontal {
+		hf := math.Min(1, math.Max(0.55, p.Bounds.H/full*1.4))
+		w := b.H * hf * p.Bounds.W / p.Bounds.H
+		return math.Min(0.45, math.Max(0.2, w/(b.W-e.Config.Gap)))
+	}
+	wf := math.Min(1, math.Max(0.6, p.Bounds.W/full*1.3))
+	h := b.W * wf * p.Bounds.H / p.Bounds.W
+	return math.Min(0.42, math.Max(0.18, h/(b.H-e.Config.Gap)))
+}
+
+func (e *Engine) layout(n *model.Node, b model.Box, rng *rand.Rand, pl plan) ([]model.Stroke, float64, error) {
 	if b.W <= 0 || b.H <= 0 {
 		return nil, 0, fmt.Errorf("empty slot")
 	}
@@ -234,15 +178,24 @@ func (e *Engine) layout(n *model.Node, b model.Box, rng *rand.Rand) ([]model.Str
 		if p == nil {
 			return nil, 0, fmt.Errorf("unknown component")
 		}
-		return render.Fit(p.Paths, p.Bounds, b), penalty, nil
+		if pl.radical[n] {
+			return fitAspect(p, b, 1.15), penalty, nil
+		}
+		return fitAspect(p, b, 1.6), penalty, nil
 	}
 	if len(n.Children) != 2 {
 		return nil, 0, fmt.Errorf("invalid tree")
 	}
 	a, z := b, b
 	if n.Operator == "⿰" || n.Operator == "⿱" {
+		horizontal := n.Operator == "⿰"
 		ratio := e.Config.MinRatio + rng.Float64()*(e.Config.MaxRatio-e.Config.MinRatio)
-		if n.Operator == "⿰" {
+		if c := n.Children[0]; pl.radical[c] {
+			ratio = e.sideShare(e.byID[c.ComponentID], horizontal, b)
+		} else if c := n.Children[1]; pl.radical[c] {
+			ratio = 1 - e.sideShare(e.byID[c.ComponentID], horizontal, b)
+		}
+		if horizontal {
 			a.W = (b.W - e.Config.Gap) * ratio
 			z.X = b.X + a.W + e.Config.Gap
 			z.W = b.W - a.W - e.Config.Gap
@@ -252,18 +205,31 @@ func (e *Engine) layout(n *model.Node, b model.Box, rng *rand.Rand) ([]model.Str
 			z.H = b.H - a.H - e.Config.Gap
 		}
 	} else {
-		p := e.byID[n.Children[0].ComponentID]
-		if p == nil || p.Inner == nil {
-			return nil, 0, fmt.Errorf("missing frame")
+		in, ok := pl.inner[n]
+		if !ok {
+			p := e.byID[n.Children[0].ComponentID]
+			if p == nil || p.Inner == nil {
+				return nil, 0, fmt.Errorf("missing frame")
+			}
+			in = *p.Inner
 		}
-		z = model.Box{X: b.X + p.Inner.X*b.W, Y: b.Y + p.Inner.Y*b.H, W: p.Inner.W * b.W, H: p.Inner.H * b.H}
+		z = model.Box{X: b.X + in.X*b.W, Y: b.Y + in.Y*b.H, W: in.W * b.W, H: in.H * b.H}
+		p := e.byID[n.Children[0].ComponentID]
+		if p == nil {
+			return nil, 0, fmt.Errorf("unknown component")
+		}
+		inner, pi, err := e.layout(n.Children[1], z, rng, pl)
+		if err != nil {
+			return nil, 0, err
+		}
+		return append(render.Fit(p.Paths, p.Bounds, b), inner...), penalty + pi, nil
 	}
-	left, pl, err := e.layout(n.Children[0], a, rng)
+	left, pa, err := e.layout(n.Children[0], a, rng, pl)
 	if err != nil {
 		return nil, 0, err
 	}
-	right, pr, err := e.layout(n.Children[1], z, rng)
-	return append(left, right...), penalty + pl + pr, err
+	right, pz, err := e.layout(n.Children[1], z, rng, pl)
+	return append(left, right...), penalty + pa + pz, err
 }
 
 type result struct {
@@ -273,46 +239,128 @@ type result struct {
 	score      float64
 }
 
-func (e *Engine) attempt(groups [][]candidate, count, depth int, temp float64, rng *rand.Rand, frame bool) (result, error) {
-	var fp *dict.Part
-	if frame && len(e.frames) > 0 && count >= 3 {
-		// The frame takes a slot of its own so no reading part is discarded.
-		fp = e.frames[rng.IntN(len(e.frames))]
-		count--
+// phonetic returns the variant of the chosen character that suits where it
+// sits: a 旁 form beside a 偏, a 脚 form under a 冠, otherwise the whole glyph.
+func (e *Engine) phonetic(char, position string, rng *rand.Rand) *dict.Part {
+	if vs := e.byPos[[2]string{char, position}]; len(vs) > 0 && rng.IntN(4) != 0 {
+		return vs[rng.IntN(min(2, len(vs)))]
 	}
-	parts := make([]*dict.Part, 0, count)
-	cs := make([]model.Component, 0, count+1)
-	quality := 0.0
-	for i := 0; i < count; i++ {
-		pool := groups[i%len(groups)]
-		if len(pool) == 0 {
-			return result{}, fmt.Errorf("no reading candidates")
+	return e.whole[char]
+}
+
+// coreSize is how many copies of the phonetic form the core (同字重ね).
+func coreSize(r config.Rarity, rng *rand.Rand) int {
+	switch r.Name {
+	case "SSR":
+		return 1 + rng.IntN(3)
+	case "UR":
+		return 2 + rng.IntN(3)
+	}
+	return 1
+}
+
+// attempt builds one 形声 style glyph: the phonetic core, wrapped from the
+// inside out by radicals drawn independently of the reading.
+func (e *Engine) attempt(ph candidate, count, depth int, rng *rand.Rand, cores int) (result, error) {
+	cores = max(1, min(cores, count, 4))
+	coreDepth := map[int]int{1: 0, 2: 1, 3: 2, 4: 2}
+	// 意符1つごとに深さが1増えるので、深さが足りないときは音符の重ねを増やして選んだ部品数を保つ。
+	for cores > 1 && coreDepth[cores] > depth {
+		cores--
+	}
+	for cores < min(count, 4) && coreDepth[cores+1] <= depth && cores+depth-coreDepth[cores] < count {
+		cores++
+	}
+	wraps := min(count-cores, depth-coreDepth[cores])
+	if len(e.rads) == 0 {
+		wraps = 0
+	}
+	used := map[string]bool{ph.part.Char: true}
+	var rads []*radical
+	frame := false
+	for len(rads) < wraps {
+		var r *radical
+		for try := 0; try < 8; try++ {
+			r = pickRadical(e.rads, used, rng)
+			isFrame := r != nil && (r.position == "tare" || r.position == "nyo" || r.position == "kamae")
+			// 構・垂・繞は内側の1〜2層に1つだけにする。
+			if r == nil || !isFrame || !frame && len(rads) < 2 {
+				frame = frame || isFrame
+				break
+			}
+			r = nil
 		}
-		c := choose(pool, temp, rng)
-		parts = append(parts, c.part)
-		role := "reading"
-		if i >= len(groups) {
-			role = "decor"
+		if r == nil {
+			break
 		}
-		cs = append(cs, model.Component{ID: c.part.ID, Char: c.part.Char, Role: role, Score: c.score})
-		quality += c.score
+		used[r.char] = true
+		rads = append(rads, r)
+	}
+	pl := plan{radical: map[*model.Node]bool{}, inner: map[*model.Node]model.Box{}}
+	cs := []model.Component{}
+	position := "whole"
+	if cores == 1 && len(rads) > 0 {
+		switch rads[0].position {
+		case "left":
+			position = "right"
+		case "top":
+			position = "bottom"
+		}
+	}
+	core := func() *model.Node {
+		p := e.phonetic(ph.part.Char, position, rng)
+		if p == nil {
+			p = ph.part
+		}
+		cs = append(cs, model.Component{ID: p.ID, Char: p.Char, Role: "reading", Score: ph.score})
+		return leaf(p)
 	}
 	var tree *model.Node
-	if fp != nil {
-		cs = append([]model.Component{{ID: fp.ID, Char: fp.Char, Role: "decor"}}, cs...)
-		tree = &model.Node{Operator: fp.Operator, Children: []*model.Node{leaf(fp), e.tree(parts, depth-1, rng)}}
-	} else {
-		tree = e.tree(parts, depth, rng)
+	pair := func(op string, a, b *model.Node) *model.Node {
+		return &model.Node{Operator: op, Children: []*model.Node{a, b}}
+	}
+	switch cores {
+	case 1:
+		tree = core()
+	case 2:
+		tree = pair([]string{"⿰", "⿱"}[rng.IntN(2)], core(), core())
+	case 3:
+		tree = pair("⿱", core(), pair("⿰", core(), core()))
+	default:
+		tree = pair("⿰", pair("⿱", core(), core()), pair("⿱", core(), core()))
+	}
+	for _, r := range rads {
+		p := r.variant(rng)
+		l := leaf(p)
+		cs = append(cs, model.Component{ID: p.ID, Char: p.Char, Role: "decor"})
+		switch r.position {
+		case "left":
+			pl.radical[l] = true
+			tree = pair("⿰", l, tree)
+		case "right":
+			pl.radical[l] = true
+			tree = pair("⿰", tree, l)
+		case "top":
+			pl.radical[l] = true
+			tree = pair("⿱", l, tree)
+		case "bottom":
+			pl.radical[l] = true
+			tree = pair("⿱", tree, l)
+		default:
+			f, _ := r.frame(p)
+			tree = pair(f.op, l, tree)
+			pl.inner[tree] = f.inner
+		}
 	}
 	m, c := e.Config.Margin, e.Config.Canvas
-	paths, penalty, err := e.layout(tree, model.Box{X: m, Y: m, W: c - 2*m, H: c - 2*m}, rng)
+	paths, penalty, err := e.layout(tree, model.Box{X: m, Y: m, W: c - 2*m, H: c - 2*m}, rng, pl)
 	if err != nil {
 		return result{}, err
 	}
 	if len(paths) > e.Config.MaxStrokes {
 		return result{}, fmt.Errorf("stroke limit")
 	}
-	return result{tree: tree, paths: paths, components: cs, score: quality/float64(count) - penalty*0.02}, nil
+	return result{tree: tree, paths: paths, components: cs, score: -penalty}, nil
 }
 func (e *Engine) Generate(ctx context.Context, r kana.Reading, now time.Time) (model.Glyph, error) {
 	var seed [32]byte
@@ -321,7 +369,7 @@ func (e *Engine) Generate(ctx context.Context, r kana.Reading, now time.Time) (m
 	}
 	rng := rand.New(rand.NewChaCha8(seed))
 	rarity := e.Rarity(rng)
-	g := model.Glyph{SchemaVersion: 1, GeneratorVersion: 1, ConfigVersion: e.Config.Version, DictionaryVersion: e.Dict.Version, Key: r.Key(), Reading: r, CreatedAt: now.UTC(), Rarity: rarity.Name, License: render.License, OGPReading: r.Display}
+	g := model.Glyph{SchemaVersion: 1, GeneratorVersion: 2, ConfigVersion: e.Config.Version, DictionaryVersion: e.Dict.Version, Key: r.Key(), Reading: r, CreatedAt: now.UTC(), Rarity: rarity.Name, License: render.License, OGPReading: r.Display}
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(e.Config.TimeoutMs)*time.Millisecond)
 	defer cancel()
 	// Ghost glyphs come from the same pinned dictionary and follow the same storage path.
@@ -354,7 +402,7 @@ func (e *Engine) Generate(ctx context.Context, r kana.Reading, now time.Time) (m
 		}
 		if tree != nil {
 			m, c := e.Config.Margin, e.Config.Canvas
-			paths, _, err := e.layout(tree, model.Box{X: m, Y: m, W: c - 2*m, H: c - 2*m}, rng)
+			paths, _, err := e.layout(tree, model.Box{X: m, Y: m, W: c - 2*m, H: c - 2*m}, rng, plan{})
 			if err == nil {
 				g.Tree = tree
 				g.IDS = tree.IDS()
@@ -379,12 +427,18 @@ func (e *Engine) Generate(ctx context.Context, r kana.Reading, now time.Time) (m
 		// The build verifies these assets, so this only happens if a dictionary
 		// slipped through; draw a normal glyph rather than failing the request.
 	}
-	slots := []int{slotKey(1, false)}
-	for n := rarity.MinParts; n <= rarity.MaxParts; n++ {
-		slots = append(slots, slotKey(n, false), slotKey(n, true))
+	cands := e.rank(r.Morae, r.Mode, r.Okurigana)
+	if len(cands) == 0 {
+		return g, fmt.Errorf("no reading candidates")
 	}
-	plans := e.plans(r, slots)
-	best, err := e.attempt(plans[slotKey(1, false)], 1, 1, rarity.Temperature, rng, false)
+	// 音符は1回だけ温度付きで抽選し、候補間では形の組み方だけを競わせる。
+	ph := choose(cands, rarity.Temperature, rng)
+	// 退避候補は意符1つ＋音符（N相当）を基本に、レアリティの部品数や総画数の上限を
+	// 超えるときは音符だけにする（音符は rank の段階で画数上限内に絞ってある）。
+	best, err := e.attempt(ph, min(2, rarity.MaxParts), 1, rng, 1)
+	if err != nil {
+		best, err = e.attempt(ph, 1, 1, rng, 1)
+	}
 	if err != nil {
 		return g, err
 	}
@@ -406,8 +460,7 @@ func (e *Engine) Generate(ctx context.Context, r kana.Reading, now time.Time) (m
 					return
 				}
 				n := rarity.MinParts + rr.IntN(rarity.MaxParts-rarity.MinParts+1)
-				frame := n >= 3 && len(e.frames) > 0 && n-1 <= 1<<(rarity.MaxDepth-1) && rr.IntN(3) == 0
-				v, err := e.attempt(plans[slotKey(n, frame)], n, rarity.MaxDepth, rarity.Temperature, rr, frame)
+				v, err := e.attempt(ph, n, rarity.MaxDepth, rr, coreSize(rarity, rr))
 				if err == nil {
 					select {
 					case results <- v:

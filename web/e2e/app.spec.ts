@@ -4,12 +4,16 @@ test("generate, share, reload the same SVG, and retrieve OGP", async ({
   request,
 }) => {
   await page.goto("/");
+  await page.getByRole("tab", { name: "音読み" }).click();
   await page.getByRole("textbox", { name: "読み", exact: true }).fill("ｷｬ");
   await page.getByRole("button", { name: "ガチャを回す" }).click();
-  await expect(page.locator(".result-caption h2")).toHaveText("キャ");
-  await expect(page.getByRole("button", { name: "結果を共有" })).toBeVisible();
+  await expect(page.locator(".canvas figcaption")).toHaveText("キャ");
+  await expect(
+    page.getByRole("button", { name: "共有", exact: true }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/\/g\/[0-9a-f]{32}$/);
   const svg = await page.locator(".glyph").innerHTML();
-  const href = await page.locator(".share-url").getAttribute("href");
+  const href = new URL(await page.locator(".share-url").inputValue()).pathname;
   await page.goto(href!);
   await expect(page.locator(".glyph")).toHaveCount(1);
   expect(await page.locator(".glyph").innerHTML()).toBe(svg);
@@ -26,10 +30,14 @@ test("generate, share, reload the same SVG, and retrieve OGP", async ({
 });
 test("reject invalid input and preserve IME composition", async ({ page }) => {
   await page.goto("/");
+  await page.getByRole("tab", { name: "音読み" }).click();
   const input = page.getByRole("textbox", { name: "読み", exact: true });
   await input.fill("キョャ");
   await page.getByRole("button", { name: "ガチャを回す" }).click();
   await expect(page.locator("#input-error")).toContainText("小書き");
+  await input.fill("トウキョウ");
+  await page.getByRole("button", { name: "ガチャを回す" }).click();
+  await expect(page.locator("#input-error")).toContainText("2拍");
   await input.dispatchEvent("compositionstart");
   await input.fill("漢字");
   await expect(
@@ -45,13 +53,17 @@ test("reject invalid input and preserve IME composition", async ({ page }) => {
 test("kun input on mobile", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  await page.getByRole("tab", { name: "訓読み" }).click();
+  await expect(page.getByRole("tab", { name: "訓読み" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await page
     .getByRole("textbox", { name: "読み（語幹）", exact: true })
     .fill("あお");
   await page.getByRole("textbox", { name: "送り仮名", exact: true }).fill("い");
   await page.getByRole("button", { name: "ガチャを回す" }).click();
-  await expect(page.locator(".result-caption h2")).toHaveText("あお（い）");
+  await expect(page.locator(".canvas figcaption")).toHaveText("あお（い）");
+  await page.goBack();
   await expect(
     page.getByRole("button", { name: "ガチャを回す" }),
   ).toBeEnabled();

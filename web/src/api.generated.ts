@@ -75,7 +75,7 @@ export interface components {
         Input: {
             /** @enum {string} */
             mode: "on" | "kun";
-            /** @description NFKC and katakana normalization precede the 1–5 code point limit and kana grammar validation. */
+            /** @description NFKC and katakana normalization precede the 1–5 code point limit and kana grammar validation. In on mode the reading must be at most 2 morae (error code morae). */
             reading: string;
             /** @description 0–3 normalized code points; total at most 6. Must be empty in on mode. */
             okurigana?: string;

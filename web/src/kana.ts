@@ -69,13 +69,13 @@ export function validate(input: Input): Issue | undefined {
     return { field: "okurigana", code: "length" };
   if ([...r].length + [...o].length > 6)
     return { field: "okurigana", code: "total_length" };
-  for (const [field, value] of [
-    ["reading", r],
-    ["okurigana", o],
-  ]) {
-    const result = morae(value);
-    if (!Array.isArray(result)) return { ...result, field };
-  }
+  const rm = morae(r);
+  if (!Array.isArray(rm)) return { ...rm, field: "reading" };
+  // 音読みは漢字1字の1音節に当たるため、2モーラ以下に限る。
+  if (input.mode === "on" && rm.length > 2)
+    return { field: "reading", code: "morae" };
+  const om = morae(o);
+  if (!Array.isArray(om)) return { ...om, field: "okurigana" };
 }
 export function issueMessage(issue: Issue): string {
   const label = issue.field === "okurigana" ? "送り仮名" : "読み";
@@ -86,6 +86,8 @@ export function issueMessage(issue: Issue): string {
   return (
     ({
       length: `${label}の文字数を確認してください。`,
+      morae:
+        "音読みは2拍（セイ、キョウなど）までです。長い読みは訓読みでお試しください。",
       total_length: "語幹と送り仮名は合わせて6文字以内です。",
       leading: `${label}の先頭には使えない文字です。`,
       character: "ひらがな・カタカナで入力してください。",

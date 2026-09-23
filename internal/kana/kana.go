@@ -128,6 +128,10 @@ func Validate(in Input) (Reading, *Issue) {
 		issue.Field = "reading"
 		return r, issue
 	}
+	// 音読みは漢字1字の1音節に当たるため、2モーラ以下に限る。
+	if r.Mode == "on" && len(r.Morae) > 2 {
+		return r, &Issue{Field: "reading", Code: "morae"}
+	}
 	if _, issue = Morae(r.Okurigana); issue != nil {
 		issue.Field = "okurigana"
 		return r, issue

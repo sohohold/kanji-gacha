@@ -95,7 +95,7 @@ components:
         mode: {type: string, enum: [on, kun]}
         reading:
           type: string
-          description: NFKC and katakana normalization precede the 1–5 code point limit and kana grammar validation.
+          description: NFKC and katakana normalization precede the 1–5 code point limit and kana grammar validation. In on mode the reading must be at most 2 morae (error code morae).
         okurigana:
           type: string
           description: 0–3 normalized code points; total at most 6. Must be empty in on mode.
