@@ -238,7 +238,7 @@ API の正は OpenAPI 3.1 のスキーマ（`api/openapi.yaml`）とする。Go 
 | --- | --- |
 | 入力フォーム | IME 変換中（compositionstart〜end）は検証を保留し、エラーは入力欄の下に表示する |
 | 生成ボタン | 連打防止、生成中はスピナーを表示する（最短400ms） |
-| 表示演出 | 結果の表示時にウィンドウを bounceIn、字形の枠を rubberBand で弾ませ、レアリティごとの絵文字（N 18個〜UR 130個）を画面下から打ち上げる。`prefers-reduced-motion` のときは無効 |
+| 表示演出 | 結果の表示時にウィンドウを bounceIn、字形の枠を rubberBand で弾ませ、レアリティごとの候補から1種類の絵文字を選び、N 18個〜UR 130個を画面下から打ち上げる。`prefers-reduced-motion` のときは無効 |
 | 字形の画像 | 生成直後だけストロークごとに `stroke-dashoffset` をアニメーションする。`prefers-reduced-motion` のときは無効 |
 | 共有リンク | Web Share API を優先し、非対応ならリンクをコピーする |
 | ヒットした漢字 | 結果の `components` のうち `role=reading` の字を重複なく並べる。該当がなければ表示しない |

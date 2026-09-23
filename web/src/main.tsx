@@ -44,6 +44,7 @@ const reactions: Record<Glyph["rarity"], [string[], number]> = {
 };
 function burst(rarity: Glyph["rarity"]) {
   const [emojis, count] = reactions[rarity];
+  const emoji = emojis[Math.floor(Math.random() * emojis.length)];
   const layer = document.createElement("div");
   layer.className = "reactions";
   layer.setAttribute("aria-hidden", "true");
@@ -51,7 +52,7 @@ function burst(rarity: Glyph["rarity"]) {
   const h = innerHeight;
   for (let i = 0; i < count; i++) {
     const el = document.createElement("span");
-    el.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+    el.textContent = emoji;
     el.style.left = `${5 + Math.random() * 90}%`;
     el.style.fontSize = `${22 + Math.random() * 26}px`;
     layer.append(el);
