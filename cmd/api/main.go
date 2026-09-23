@@ -6,6 +6,7 @@ import (
 	"kanji-gacha/internal/compose"
 	"kanji-gacha/internal/dict"
 	"kanji-gacha/internal/httpapi"
+	"kanji-gacha/internal/metrics"
 	"kanji-gacha/internal/store"
 	"log"
 	"net/http"
@@ -43,6 +44,11 @@ func main() {
 	}
 	app.GenerationEnabled = os.Getenv("GENERATION_ENABLED") != "false"
 	app.TrustCloudFront = os.Getenv("TRUST_CLOUDFRONT") == "true"
+	// EMF records go to stdout as bare JSON lines; log.Printf writes to stderr
+	// with a date prefix, which would stop CloudWatch reading them as metrics.
+	if ns := os.Getenv("METRICS_NAMESPACE"); ns != "" {
+		app.Metrics = metrics.NewEMF(os.Stdout, ns)
+	}
 	srv := &http.Server{Addr: env("LISTEN_ADDR", ":8080"), Handler: app.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
