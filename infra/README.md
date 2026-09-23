@@ -76,7 +76,7 @@ cd ../..
 
 - Environments に `production` を作り、Deployment branches を `main` のみに制限する。デプロイロールはこのEnvironmentのジョブだけを信頼するため（OIDCの `sub` が `repo:sohohold/kanji-gacha:environment:production`）、この制限がブランチの制限になります。必要なら Required reviewers も設定できます。
 - Variables に `AWS_DEPLOY_ROLE_ARN` を追加し、`terraform -chdir=infra/bootstrap output -raw deploy_role_arn` の値を入れる。未設定の間、デプロイワークフローは実行されずにスキップされます。
-- 任意で `GENERATION_ENABLED`（`true`/`false`、既定 `true`）と `BASE_URL`（独自ドメインへ移すときだけ。未設定ならCloudFrontのドメイン）を追加する。
+- 任意で `GENERATION_ENABLED`（`true`/`false`、既定 `true`）と `BASE_URL` を追加する。`BASE_URL` は独自ドメインへ移すときだけ使い、未設定ならCloudFrontのドメインになります。下の「独自ドメイン」の準備が済むまでは設定しないでください。
 
 長期のアクセスキーはGitHubに登録しません。
 
@@ -103,7 +103,7 @@ cd ../..
 3. コミットSHAをタグにarm64イメージを `--provenance=false` でbuild/pushする。タグは上書き不可なので、同じコミットの再実行では既存のイメージを再利用する。
 4. pushしたdigestのイメージを取り出し、その中の `/app/web` を静的ファイルとして使う。共有HTMLはLambdaがイメージ内の `index.html` から返すため、手元の `web/dist` を使うとハッシュ付きファイル名が食い違います。
 5. ハッシュ付きアセットを先にS3へ追加する（1年・immutable）。旧版のアセットは削除しません。キャッシュされた旧HTMLが参照し続けるためです。
-6. digestを指定して `plan -out` し、削除・置換を含むplanなら中止してからそのplanをapplyする。`base_url` はLambdaに設定済みの値（出力 `configured_base_url`。初回はCloudFrontのドメイン）か `vars.BASE_URL` を必ず渡し、既定値のlocalhostへ戻しません。
+6. digestを指定して `plan -out` し、削除・置換を含むplanなら中止してからそのplanをapplyする。`base_url` はLambdaに設定済みの値（出力 `configured_base_url`。初回はCloudFrontのドメイン）か `vars.BASE_URL` を必ず渡し、既定値のlocalhostへ戻しません。末尾の `/` は取り除きます。ホストがCloudFrontのドメインでも別名でもなければ、何もapplyせずに中止します。
 7. `kanji-ui.otf` と `index.html`（`no-cache`）をアップロードし、`index.html` が参照する実体がS3にあるか確認する。
 8. CloudFrontの `/` `/index.html` `/g/*` `/kanji-ui.otf` を無効化し、完了を待つ。
 9. CloudFront経由でトップ・アセット・フォント・API（不正IDで400）・共有ページ（存在しないIDで404のSPA）を確認し、Function URLへの直接呼び出しが403になることを確認する。生成（POST）はしないので、確認のたびに結果が保存されることはありません。
@@ -128,6 +128,12 @@ terraform -chdir=infra apply manual.tfplan
 新規生成を止めるには、リポジトリ変数 `GENERATION_ENABLED` を `false` にして `Deploy` を手動実行します（同じコミットの再デプロイになります）。POSTは503を返し、保存済み結果の閲覧は続きます。変数を戻して再実行すると再開します。手元からapplyして切り替えた場合も、次のデプロイで変数の値に戻る点に注意してください。
 
 AWS Budgetsは、アカウント全体の実コストが月 `budget_limit_usd`（既定1 USD）を超えたときに `budget_emails` へメールします。通知するだけで、何も止めません。アプリ分だけを対象にしたい場合は、下のタグを使ってフィルタを追加してください。
+
+## 独自ドメイン
+
+`BASE_URL` は、アプリが共有リンクとOGP画像のURLを組み立てるときに使う値です。変えるのはLambdaの環境変数だけで、CloudFrontをそのドメインで応答させる設定はしません。独自ドメインで公開するには、us-east-1で発行したACM証明書と、CloudFrontの別名（`aliases`）・`viewer_certificate` の設定、DNSのレコードが必要です。この構成にはまだその設定がありません。
+
+`scripts/deploy.sh` は、`BASE_URL` のホストがdistributionのドメインか別名に含まれていない場合、何もapplyせずに中止します。存在しないドメインを誤って設定し、開けない共有リンクを発行することを防ぐためです。独自ドメインへ移すときは、先に上記の設定をTerraformへ追加して適用し、最後にリポジトリ変数 `BASE_URL` を設定してください。
 
 ## タグ
 

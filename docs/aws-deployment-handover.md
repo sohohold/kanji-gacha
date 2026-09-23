@@ -32,7 +32,7 @@ Lambda実行ロールをデプロイロールが変更できると、インラ�
 
 CIが `main` へのpushで成功したときに `workflow_run` で動く。手動実行は `main` のみ。`vars.AWS_DEPLOY_ROLE_ARN` が未設定の間はジョブ自体をスキップする。同時実行は1つで、実行中は取り消さない。処理本体は `scripts/deploy.sh` にあり、人の認証で手元から実行しても同じ手順になる。
 
-主な判断：イメージタグはコミットSHAで、同じコミットの再実行では既存イメージを再利用する。stateの出力 `release` に前回のコミットを記録し、それより古いコミットは適用しない。`release` は疎通確認まで成功した後の最後のapply（出力だけが変わる）で更新する。planに削除・置換が含まれれば中止する（空の `image_uri` による削除を防ぐ）。`base_url` はLambdaに設定済みの値（出力 `configured_base_url`）か `vars.BASE_URL` を必ず渡す。静的ファイルはpushしたdigestのイメージから取り出し、ハッシュ付きアセットはapply前に追加、`index.html` はapply後に更新し、旧アセットは削除しない。疎通確認はPOSTせず、トップ・アセット・フォント・APIの400・共有ページの404・Function URL直接呼び出しの403を見る。`GENERATION_ENABLED` はリポジトリ変数で管理する。
+主な判断：イメージタグはコミットSHAで、同じコミットの再実行では既存イメージを再利用する。stateの出力 `release` に前回のコミットを記録し、それより古いコミットは適用しない。`release` は疎通確認まで成功した後の最後のapply（出力だけが変わる）で更新する。planに削除・置換が含まれれば中止する（空の `image_uri` による削除を防ぐ）。`base_url` はLambdaに設定済みの値（出力 `configured_base_url`）か `vars.BASE_URL` を必ず渡す。`BASE_URL` のホストがCloudFrontのドメインか別名でなければ中止する（独自ドメイン用の別名・ACM証明書はまだTerraformにない）。静的ファイルはpushしたdigestのイメージから取り出し、ハッシュ付きアセットはapply前に追加、`index.html` はapply後に更新し、旧アセットは削除しない。疎通確認はPOSTせず、トップ・アセット・フォント・APIの400・共有ページの404・Function URL直接呼び出しの403を見る。`GENERATION_ENABLED` はリポジトリ変数で管理する。
 
 Dockerfileのweb・Goステージを `--platform=$BUILDPLATFORM` にし、Goを `GOARCH=$TARGETARCH` でクロスコンパイルするよう変えた。amd64ランナーでQEMUなしにarm64イメージを作るため。
 

@@ -6,7 +6,8 @@
 # Environment:
 #   RELEASE             commit to deploy (default: HEAD); also the image tag
 #   BASE_URL            public URL; empty keeps the one in state, or on the
-#                       first deploy uses the CloudFront domain once it exists
+#                       first deploy uses the CloudFront domain once it exists.
+#                       Its host must be the distribution's domain or alias
 #   GENERATION_ENABLED  true/false; pauses new generation when false
 set -euo pipefail
 
@@ -100,6 +101,23 @@ if [[ -z $BASE_URL ]]; then
   BASE_URL=$(output configured_base_url)
   if [[ $BASE_URL == http://localhost* ]]; then
     BASE_URL=$(output base_url)
+  fi
+fi
+# The app trims a trailing slash itself; do the same so the smoke-test URLs
+# below do not turn into //paths.
+while [[ $BASE_URL == */ ]]; do BASE_URL=${BASE_URL%/}; done
+# BASE_URL only sets the links the app writes. A host the distribution does not
+# serve (no alias and certificate for it) would publish links that cannot
+# load, so refuse it before anything is applied.
+if [[ -n $BASE_URL ]]; then
+  distribution=$(output distribution_id)
+  host=${BASE_URL#*://}
+  host=${host%%/*}
+  if [[ -z $distribution ]] || ! aws cloudfront get-distribution --id "$distribution" \
+    --query 'Distribution.[DomainName, DistributionConfig.Aliases.Items]' --output text |
+    tr '\t' '\n' | grep -xF "$host" >/dev/null; then
+    echo "::error::BASE_URL host $host is not served by the CloudFront distribution; add it as an alias with an ACM certificate first" >&2
+    exit 1
   fi
 fi
 # The previous release marker is kept until the static files are published and
