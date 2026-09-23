@@ -55,7 +55,7 @@
   {
     "name": "tokyo",
     "input": {
-      "mode": "on",
+      "mode": "kun",
       "reading": "とうきょう",
       "okurigana": ""
     },
@@ -71,7 +71,7 @@
   {
     "name": "five",
     "input": {
-      "mode": "on",
+      "mode": "kun",
       "reading": "アイウエオ",
       "okurigana": ""
     },
@@ -102,7 +102,7 @@
   {
     "name": "double-long",
     "input": {
-      "mode": "on",
+      "mode": "kun",
       "reading": "アーー",
       "okurigana": ""
     },
@@ -465,5 +465,52 @@
     "valid": false,
     "code": "character",
     "field": "okurigana"
+  },
+  {
+    "name": "on-two-morae-yoon",
+    "input": {
+      "mode": "on",
+      "reading": "きょう",
+      "okurigana": ""
+    },
+    "valid": true,
+    "normalized": "キョウ",
+    "morae": [
+      "キョ",
+      "ウ"
+    ]
+  },
+  {
+    "name": "on-three-morae",
+    "input": {
+      "mode": "on",
+      "reading": "トウキョウ",
+      "okurigana": ""
+    },
+    "valid": false,
+    "field": "reading",
+    "code": "morae"
+  },
+  {
+    "name": "on-three-long",
+    "input": {
+      "mode": "on",
+      "reading": "アーー",
+      "okurigana": ""
+    },
+    "valid": false,
+    "field": "reading",
+    "code": "morae"
+  },
+  {
+    "name": "on-three-plain",
+    "input": {
+      "mode": "on",
+      "reading": "アイウ",
+      "okurigana": ""
+    },
+    "valid": false,
+    "field": "reading",
+    "code": "morae"
   }
 ]

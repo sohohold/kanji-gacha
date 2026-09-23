@@ -35,6 +35,9 @@ test("reject invalid input and preserve IME composition", async ({ page }) => {
   await input.fill("キョャ");
   await page.getByRole("button", { name: "ガチャを回す" }).click();
   await expect(page.locator("#input-error")).toContainText("小書き");
+  await input.fill("トウキョウ");
+  await page.getByRole("button", { name: "ガチャを回す" }).click();
+  await expect(page.locator("#input-error")).toContainText("2拍");
   await input.dispatchEvent("compositionstart");
   await input.fill("漢字");
   await expect(
