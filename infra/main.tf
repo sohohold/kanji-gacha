@@ -161,12 +161,17 @@ resource "aws_cloudfront_distribution" "app" {
     compress               = true
   }
   dynamic "ordered_cache_behavior" {
-    for_each = ["/api/*", "/g/*", "/og/*"]
+    # Map keys iterate in lexical order, which keeps /api/* ahead of /g/* and /og/*.
+    for_each = {
+      "/api/*" = ["GET", "HEAD", "OPTIONS", "PUT", "PATCH", "POST", "DELETE"]
+      "/g/*"   = ["GET", "HEAD"]
+      "/og/*"  = ["GET", "HEAD"]
+    }
     content {
-      path_pattern             = ordered_cache_behavior.value
+      path_pattern             = ordered_cache_behavior.key
       target_origin_id         = "api"
       viewer_protocol_policy   = "redirect-to-https"
-      allowed_methods          = ["GET", "HEAD", "OPTIONS", "PUT", "PATCH", "POST", "DELETE"]
+      allowed_methods          = ordered_cache_behavior.value
       cached_methods           = ["GET", "HEAD"]
       cache_policy_id          = aws_cloudfront_cache_policy.app.id
       origin_request_policy_id = aws_cloudfront_origin_request_policy.api.id
