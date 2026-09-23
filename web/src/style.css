@@ -5,229 +5,192 @@
   font-display: swap;
 }
 :root {
-  font-family: "Gacha UI", sans-serif;
-  color: #e9ece6;
-  background: #101411;
-  font-synthesis: none;
-  font-size: 14px;
-  color-scheme: dark;
-  --muted: #91a092;
-  --green: #c4f3b1;
-  --line: #2d372e;
-}
-* {
-  box-sizing: border-box;
+  --desktop: #008080;
+  --face: silver;
+  --navy: navy;
 }
 body {
   margin: 0;
-}
-button,
-input {
-  font: inherit;
-}
-button,
-a {
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
-}
-button {
-  cursor: pointer;
-}
-button:disabled {
-  cursor: default;
-  opacity: 0.55;
-}
-a {
-  color: inherit;
-  text-underline-offset: 3px;
-}
-button:focus-visible,
-a:focus-visible,
-input:focus-visible {
-  outline: 2px solid var(--green);
-  outline-offset: 4px;
-}
-.screen {
   min-height: 100svh;
-  width: min(100%, 420px);
-  margin: auto;
-  padding: 48px 16px;
+  background: var(--desktop);
+  color: #222;
+  font-size: 12px;
+}
+body,
+button,
+input,
+.window,
+.title-bar-text,
+.status-bar-field,
+legend,
+label,
+li {
+  font-family: "Pixelated MS Sans Serif", "Gacha UI", sans-serif;
+}
+.title-bar-text {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+.desktop {
+  min-height: 100svh;
+  display: grid;
+  grid-template-columns: minmax(0, 420px);
+  place-content: center;
+  padding: 24px 16px;
+  box-sizing: border-box;
+}
+.desktop > .window {
+  min-width: 0;
+}
+.window-body {
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  justify-content: center;
-  gap: 24px;
+  gap: 12px;
+  margin: 12px;
   text-align: center;
 }
 h1 {
   font-family: "Gacha UI", serif;
-  font-size: 28px;
   font-weight: 400;
-  letter-spacing: 0.08em;
-  margin: 0;
+  font-size: 30px;
+  letter-spacing: 0.12em;
+  margin: 12px 0 4px;
+  color: var(--navy);
+  text-shadow: 2px 2px 0 #fff;
 }
 form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  text-align: left;
 }
-.tabs {
-  display: flex;
-  background: #191f1a;
-  padding: 4px;
-  gap: 4px;
-  border-radius: 8px;
+menu[role="tablist"] > li > a {
+  padding: 2px 12px;
+  font-size: 12px;
 }
-.tabs button {
-  flex: 1;
-  border: 0;
-  background: none;
-  color: var(--muted);
-  border-radius: 5px;
-  padding: 8px;
-}
-.tabs button[aria-selected="true"] {
-  background: #303c30;
-  color: #ecf6e7;
+.tabpanel .window-body {
+  margin: 12px;
 }
 .fields {
   display: flex;
-  gap: 8px;
+  gap: 6px;
 }
 .fields input {
   flex: 3;
   min-width: 0;
+  height: auto;
+  padding: 8px;
+  font-family: "Gacha UI", sans-serif;
+  font-size: 22px;
+  letter-spacing: 0.12em;
+  text-align: center;
 }
 .fields input + input {
   flex: 2;
 }
-input {
-  background: #171d18;
-  border: 1px solid #3f4d40;
-  border-radius: 5px;
-  padding: 14px 16px;
-  font-size: 22px;
-  letter-spacing: 0.12em;
-  text-align: center;
-  color: #f3f0e7;
-}
 input::placeholder {
-  color: #5d6a5e;
+  color: #9a9a9a;
 }
 input[aria-invalid="true"] {
-  border-color: #eea598;
+  background: #fff4f0;
 }
 .error {
-  color: #ffb4a3;
-  font-size: 12px;
-  line-height: 1.7;
-  min-height: 20px;
+  color: #a00000;
+  min-height: 16px;
   margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.roll,
+.progress-indicator {
+  width: 100%;
+  height: 36px;
 }
 .roll {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  background: var(--green);
-  color: #172014;
-  border: 0;
-  border-radius: 5px;
+  font-size: 13px;
   font-weight: 700;
-  font-size: 15px;
-  padding: 16px;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
 }
-.roll:hover:not(:disabled) {
-  background: #d7ffca;
+.progress-indicator-bar {
+  animation: fill 0.4s steps(12) forwards;
 }
-.paper {
+.hint {
   margin: 0;
-  background: #f3f0e7;
-  color: #3a3830;
-  border-radius: 6px;
-  padding: 10% 10% 16px;
+  color: #444;
+  font-size: 11px;
+}
+.sunken {
+  background: #fff;
+  box-shadow:
+    inset -1px -1px #fff,
+    inset 1px 1px grey,
+    inset -2px -2px #dfdfdf,
+    inset 2px 2px #0a0a0a;
+}
+.canvas {
+  margin: 0;
+  padding: 12% 12% 12px;
 }
 .glyph svg {
   display: block;
   width: 100%;
   height: auto;
 }
-.paper figcaption {
+.canvas figcaption {
   font-family: "Gacha UI", serif;
+  font-size: 15px;
   letter-spacing: 0.15em;
-  margin-top: 12px;
+  margin-top: 8px;
 }
-.link {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+fieldset {
+  text-align: left;
+  margin: 0;
 }
-.share-url {
-  overflow-wrap: anywhere;
-  font: 12px monospace;
-  color: var(--muted);
-}
-.link button {
-  border: 1px solid #495a49;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--green);
-  padding: 12px;
-}
-.link button:hover {
-  background: #303c30;
+.field-row input {
+  flex: 1;
+  min-width: 0;
+  font-family: monospace;
 }
 .notice {
-  font-size: 12px;
-  color: var(--green);
-  min-height: 16px;
-  margin: -16px 0 0;
-}
-.hits h2 {
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--muted);
-  margin: 0 0 8px;
+  color: var(--navy);
+  min-height: 14px;
+  margin: 6px 0 0;
 }
 .hits ul {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
+  gap: 6px;
   list-style: none;
   padding: 0;
-  margin: 0;
+  margin: 4px 0;
 }
 .hits li {
   font-family: "Gacha UI", serif;
   font-size: 22px;
-  width: 44px;
-  height: 44px;
+  width: 40px;
+  height: 40px;
   display: grid;
   place-items: center;
-  border: 1px solid var(--line);
-  border-radius: 5px;
 }
 .again {
-  font-size: 13px;
+  align-self: center;
+  padding: 0 20px;
+  height: 28px;
 }
-footer {
-  color: var(--muted);
+.status-bar {
+  flex-direction: column;
+}
+.status-bar-field {
   font-size: 10px;
-  line-height: 2;
+  line-height: 1.6;
+  padding: 2px 4px;
 }
-.spinner {
-  width: 15px;
-  height: 15px;
-  border: 2px solid #56744b;
-  border-right-color: transparent;
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
+.status-bar-field a {
+  color: var(--navy);
 }
-@keyframes spin {
+@keyframes fill {
+  from {
+    width: 0;
+  }
   to {
-    transform: rotate(360deg);
+    width: 100%;
   }
 }
 @media (prefers-reduced-motion: reduce) {

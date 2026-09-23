@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-query";
 import { APIError, generate, getGlyph, type Glyph } from "./api";
 import { validate, issueMessage, type Input } from "./kana";
+import "98.css";
 import "./style.css";
 const client = new QueryClient({
   defaultOptions: {
@@ -139,7 +140,7 @@ function App() {
     return () => animations.forEach((a) => a.cancel());
   }, [animate, g?.id]);
   const inResult = !!route.id || route.invalid;
-  const url = g && new URL(`/g/${g.id}`, location.origin).href;
+  const url = g ? new URL(`/g/${g.id}`, location.origin).href : "";
   const hits = g
     ? [
         ...new Set(
@@ -148,167 +149,212 @@ function App() {
       ].filter(Boolean)
     : [];
   return (
-    <main className={inResult ? "screen result" : "screen home"}>
-      {inResult ? (
-        <>
-          {g ? (
-            <>
-              <figure className="paper" ref={card}>
-                <div
-                  className="glyph"
-                  dangerouslySetInnerHTML={{ __html: g.svg }}
-                />
-                <figcaption>{g.reading.display}</figcaption>
-              </figure>
-              <div className="link">
-                <a className="share-url" href={`/g/${g.id}`}>
-                  {url}
-                </a>
-                <button type="button" onClick={() => share(url!)}>
-                  リンクを共有
-                </button>
-              </div>
-              <p className="notice" role="status">
-                {notice}
-              </p>
-              {hits.length > 0 && (
-                <section className="hits" aria-label="読みにヒットした漢字">
-                  <h2>ヒットした漢字</h2>
-                  <ul>
-                    {hits.map((c) => (
-                      <li key={c}>{c}</li>
-                    ))}
-                  </ul>
-                </section>
-              )}
-            </>
-          ) : (
-            <p className="error" role="alert">
-              {route.invalid
-                ? "共有URLを確認してください。"
-                : saved.error
-                  ? message(saved.error)
-                  : "読み込み中…"}
-            </p>
-          )}
-          <a
-            className="again"
-            href="/"
-            onClick={(e) => {
-              e.preventDefault();
-              go("/");
-            }}
-          >
-            もう一度回す
-          </a>
-        </>
-      ) : (
-        <>
-          <h1>架空漢字ガチャ</h1>
-          <form onSubmit={roll} noValidate>
-            <div className="tabs" role="tablist" aria-label="読みの種類">
-              {(["on", "kun"] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  role="tab"
-                  aria-selected={mode === m}
-                  onClick={() => {
-                    setMode(m);
-                    setTouched(false);
-                    mutation.reset();
-                  }}
-                >
-                  {m === "on" ? "音読み" : "訓読み"}
-                </button>
-              ))}
-            </div>
-            <div className="fields">
-              <input
-                id="reading"
-                aria-label={mode === "kun" ? "読み（語幹）" : "読み"}
-                autoComplete="off"
-                spellCheck={false}
-                placeholder={mode === "on" ? "セイ" : "あお"}
-                value={reading}
-                aria-invalid={!!(touched && issue?.field === "reading")}
-                aria-describedby="input-error"
-                onChange={(e) => {
-                  setReading(e.target.value);
-                  mutation.reset();
-                }}
-                onBlur={() => setTouched(true)}
-                onCompositionStart={() => {
-                  composingRef.current = true;
-                  setComposing(true);
-                }}
-                onCompositionEnd={() => {
-                  composingRef.current = false;
-                  setComposing(false);
-                }}
+    <main className="desktop">
+      <div className={`window ${inResult ? "result" : "home"}`}>
+        <div className="title-bar">
+          <div className="title-bar-text">
+            {inResult && g ? `${g.reading.display} - ` : ""}KANJI GACHA 98
+          </div>
+          {inResult && (
+            <div className="title-bar-controls">
+              <button
+                aria-label="Close"
+                title="ホームへ戻る"
+                onClick={() => go("/")}
               />
-              {mode === "kun" && (
-                <input
-                  id="okurigana"
-                  aria-label="送り仮名"
-                  autoComplete="off"
-                  placeholder="い"
-                  value={okurigana}
-                  onChange={(e) => {
-                    setOkurigana(e.target.value);
-                    mutation.reset();
-                  }}
-                  aria-invalid={!!(touched && issue?.field === "okurigana")}
-                  onCompositionStart={() => {
-                    composingRef.current = true;
-                    setComposing(true);
-                  }}
-                  onCompositionEnd={() => {
-                    composingRef.current = false;
-                    setComposing(false);
-                  }}
-                />
-              )}
             </div>
-            <p id="input-error" className="error" role="alert">
-              {touched && issue
-                ? issueMessage(issue)
-                : mutation.error
-                  ? message(mutation.error)
-                  : ""}
-            </p>
-            <button className="roll" type="submit" disabled={busy || composing}>
-              {busy ? (
+          )}
+        </div>
+        <div className="window-body">
+          {inResult ? (
+            <>
+              {g ? (
                 <>
-                  <span className="spinner" /> 生成中…
+                  <figure className="canvas sunken" ref={card}>
+                    <div
+                      className="glyph"
+                      role="img"
+                      aria-label={`${g.reading.display}の架空漢字 ${g.ids}`}
+                      dangerouslySetInnerHTML={{ __html: g.svg }}
+                    />
+                    <figcaption>{g.reading.display}</figcaption>
+                  </figure>
+                  <fieldset>
+                    <legend>共有リンク</legend>
+                    <div className="field-row">
+                      <input
+                        className="share-url"
+                        aria-label="共有リンク"
+                        readOnly
+                        value={url}
+                        onFocus={(e) => e.target.select()}
+                      />
+                      <button type="button" onClick={() => share(url)}>
+                        共有
+                      </button>
+                    </div>
+                    <p className="notice" role="status">
+                      {notice}
+                    </p>
+                  </fieldset>
+                  {hits.length > 0 && (
+                    <fieldset className="hits">
+                      <legend>ヒットした漢字</legend>
+                      <ul>
+                        {hits.map((c) => (
+                          <li key={c} className="sunken">
+                            {c}
+                          </li>
+                        ))}
+                      </ul>
+                    </fieldset>
+                  )}
                 </>
               ) : (
-                "ガチャを回す"
+                <p className="error" role="alert">
+                  {route.invalid
+                    ? "共有URLを確認してください。"
+                    : saved.error
+                      ? message(saved.error)
+                      : "読み込み中…"}
+                </p>
               )}
-            </button>
-          </form>
-        </>
-      )}
-      <footer>
-        字形：<a href="https://kanjivg.tagaini.net/">KanjiVG © Ulrich Apel</a>
-        （改変・
-        <a href="https://creativecommons.org/licenses/by-sa/3.0/">
-          CC BY-SA 3.0
-        </a>
-        ）
-        <br />
-        読み：
-        <a href="https://www.edrdg.org/wiki/index.php/KANJIDIC_Project">
-          KANJIDIC2 © EDRDG
-        </a>
-        （<a href="https://www.edrdg.org/edrdg/licence.html">CC BY-SA 4.0</a>）
-        <br />
-        フォント：
-        <a href="https://github.com/notofonts/noto-cjk">Noto CJK © Adobe</a>（
-        <a href="https://openfontlicense.org/">SIL OFL 1.1</a>）
-        <br />
-        生成結果と読みは共有URLから公開で閲覧できます。
-      </footer>
+              <button type="button" className="again" onClick={() => go("/")}>
+                もう一度回す
+              </button>
+            </>
+          ) : (
+            <>
+              <h1>架空漢字ガチャ</h1>
+              <form onSubmit={roll} noValidate>
+                <menu role="tablist" aria-label="読みの種類">
+                  {(["on", "kun"] as const).map((m) => (
+                    <li key={m} role="tab" aria-selected={mode === m}>
+                      <a
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setMode(m);
+                          setTouched(false);
+                          mutation.reset();
+                        }}
+                      >
+                        {m === "on" ? "音読み" : "訓読み"}
+                      </a>
+                    </li>
+                  ))}
+                </menu>
+                <div className="window tabpanel" role="tabpanel">
+                  <div className="window-body">
+                    <div className="fields">
+                      <input
+                        id="reading"
+                        type="text"
+                        aria-label={mode === "kun" ? "読み（語幹）" : "読み"}
+                        autoComplete="off"
+                        spellCheck={false}
+                        placeholder={mode === "on" ? "セイ" : "あお"}
+                        value={reading}
+                        aria-invalid={!!(touched && issue?.field === "reading")}
+                        aria-describedby="input-error"
+                        onChange={(e) => {
+                          setReading(e.target.value);
+                          mutation.reset();
+                        }}
+                        onBlur={() => setTouched(true)}
+                        onCompositionStart={() => {
+                          composingRef.current = true;
+                          setComposing(true);
+                        }}
+                        onCompositionEnd={() => {
+                          composingRef.current = false;
+                          setComposing(false);
+                        }}
+                      />
+                      {mode === "kun" && (
+                        <input
+                          id="okurigana"
+                          type="text"
+                          aria-label="送り仮名"
+                          autoComplete="off"
+                          placeholder="い"
+                          value={okurigana}
+                          onChange={(e) => {
+                            setOkurigana(e.target.value);
+                            mutation.reset();
+                          }}
+                          aria-invalid={
+                            !!(touched && issue?.field === "okurigana")
+                          }
+                          onCompositionStart={() => {
+                            composingRef.current = true;
+                            setComposing(true);
+                          }}
+                          onCompositionEnd={() => {
+                            composingRef.current = false;
+                            setComposing(false);
+                          }}
+                        />
+                      )}
+                    </div>
+                    <p id="input-error" className="error" role="alert">
+                      {touched && issue
+                        ? issueMessage(issue)
+                        : mutation.error
+                          ? message(mutation.error)
+                          : ""}
+                    </p>
+                    {busy ? (
+                      <div
+                        className="progress-indicator segmented"
+                        role="progressbar"
+                        aria-label="生成中"
+                      >
+                        <span className="progress-indicator-bar" />
+                      </div>
+                    ) : (
+                      <button
+                        className="roll default"
+                        type="submit"
+                        disabled={composing}
+                      >
+                        ガチャを回す
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </form>
+              <p className="hint">
+                生成結果と読みは共有URLから公開で閲覧できます。
+              </p>
+            </>
+          )}
+        </div>
+        <footer className="status-bar">
+          <p className="status-bar-field">
+            字形 <a href="https://kanjivg.tagaini.net/">KanjiVG</a> © Ulrich
+            Apel（改変・
+            <a href="https://creativecommons.org/licenses/by-sa/3.0/">
+              CC BY-SA 3.0
+            </a>
+            ）
+          </p>
+          <p className="status-bar-field">
+            読み{" "}
+            <a href="https://www.edrdg.org/wiki/index.php/KANJIDIC_Project">
+              KANJIDIC2
+            </a>{" "}
+            © EDRDG（
+            <a href="https://www.edrdg.org/edrdg/licence.html">CC BY-SA 4.0</a>
+            ）
+          </p>
+          <p className="status-bar-field">
+            フォント{" "}
+            <a href="https://github.com/notofonts/noto-cjk">Noto CJK</a> ©
+            Adobe（<a href="https://openfontlicense.org/">OFL 1.1</a>）
+          </p>
+        </footer>
+      </div>
     </main>
   );
 }

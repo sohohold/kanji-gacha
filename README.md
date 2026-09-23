@@ -34,7 +34,7 @@ docker compose up --build
 - 幽霊文字・タイトの特殊枠、JSTの時刻条件。
 - Go側で座標変換したSVG、生成直後の書き順アニメーション。
 - ローカル／S3の保存、共有ページ、遅延生成して保存する1200×630 PNG。
-- React・TanStack Query、IME対応、モバイル表示、共有・コピー。画面はホーム（アプリ名・入力・ボタン・ライセンス）と結果（字形・リンク・ヒットした漢字・ライセンス）の縦一列。
+- React・TanStack Query、IME対応、モバイル表示、共有・コピー。画面は[98.css](https://jdan.github.io/98.css/)のウィンドウで、ホーム（アプリ名・入力・ボタン・ライセンス）と結果（字形・リンク・ヒットした漢字・ライセンス）の縦一列。
 - ダーク画面、動きを減らす設定への対応、データ提供元とライセンスの表記。
 
 `config/generator.json` の上限・配置寸法・温度・抽選確率を変更して調整できます。設定の読み込みは起動時です。全レイアウト演算子の網羅、分割部品の完全復元、高密度字形の見栄えは引き続き調整対象です。
@@ -86,4 +86,4 @@ GoとTSは `shared/kana-cases.json` の同じ受理／拒否例を検証しま�
 
 KanjiVG © Ulrich Apel / CC BY-SA 3.0、KANJIDIC2 © James William Breen and EDRDG / CC BY-SA 4.0。派生辞書は両データを抽出・変換したものでCC BY-SA 4.0として配布します。KanjiVGから生成したSVGはCC BY-SA 3.0です。
 
-OGPと画面の文字はNoto Sans CJK JP © Adobe / SIL OFL 1.1をサブセットして使用しています。ライセンス本文は `licenses/` と `internal/render/assets/OFL.txt` にあります。
+OGPと画面の文字はNoto Sans CJK JP © Adobe / SIL OFL 1.1をサブセットして使用しています。ライセンス本文は `licenses/` と `internal/render/assets/OFL.txt` にあります。画面のスタイルは98.css © Jordan Scales（MIT、`licenses/98.css.txt`）を使用しています。
