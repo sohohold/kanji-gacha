@@ -1,66 +1,152 @@
 # AWSへの配置（未デプロイ）
 
-TerraformはECR、非公開S3、Lambda arm64、Function URL（AWS_IAM）、OAC、CloudFront、ロググループを定義しています。顧客VPC・NAT Gatewayは作りません。初期状態の `image_uri=""` はイメージpush前に必要なECR・S3・IAM・ログ等のみ作ります。
+Terraformは2つの構成に分かれています。`infra/bootstrap` はアカウント単位で一度だけ人の認証で適用するもので、Terraform stateのS3バケット、GitHub ActionsのOIDCデプロイロール、Lambda実行ロールの権限境界、AWS Budgetsの通知を作ります。`infra` はアプリ本体で、ECR、非公開S3、Lambda arm64、Function URL（AWS_IAM）、OAC、CloudFront、ロググループを定義します。顧客VPC・NAT Gatewayは作りません。アプリ本体は通常 `.github/workflows/deploy.yml` が `scripts/deploy.sh` を通して適用します。
+
+この実装作業ではどちらの構成もapplyしていません。以下の操作は実際にAWSリソースと費用を発生させるので、対象アカウントとplanを確認してから実行してください。
 
 ## 実行前のAWS認証
 
 `terraform plan` にもAWS認証が必要です。Terraformを実行する環境（WSL・コンテナの場合はその内部）で認証を設定してください。以下のコマンドはリポジトリルートから実行します。
 
-まず [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) をインストールし、`aws --version` で確認します。
-
-IAM Identity Center（SSO）を利用できる場合は、次の手順でプロファイルを設定します。SSO Start URLとSSOリージョンは利用先の設定値を入力してください。SSOリージョンはリソースの配置先 `ap-northeast-1` と異なる場合があります。
+[AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) の2.32.0以降では、IAM Identity Center（SSO）を設定していなくてもブラウザ経由でログインできます。このプロジェクトではこの方法でplanまで確認済みです。
 
 ```bash
-aws configure sso --profile kanji-gacha # 初回のみ
-aws sso login --profile kanji-gacha
+aws login --profile kanji-gacha --region ap-northeast-1 --remote
 export AWS_PROFILE=kanji-gacha
 aws sts get-caller-identity
-terraform -chdir=infra init
-terraform -chdir=infra plan
 ```
 
-`get-caller-identity` の `Account` と `Arn` が意図したアカウント・ロールか確認してからplanへ進んでください。既存のプロファイルを使う場合は `kanji-gacha` をその名前に置き換え、初回設定を省略します。SSOのセッションが切れた場合は `aws sso login --profile kanji-gacha` を再実行します。
+`get-caller-identity` の `Account` が `473536070013` であることを確認してから進んでください。セッションが切れたら `aws login` を再実行します。
 
-SSOを使わず、既にIAMユーザーのアクセスキーが発行されている場合は、上記の `configure sso` と `sso login` の代わりに `aws configure --profile kanji-gacha` で対話入力します。一時認証情報を環境変数で渡す場合は `AWS_ACCESS_KEY_ID`・`AWS_SECRET_ACCESS_KEY` に加え `AWS_SESSION_TOKEN` も必要です。認証情報を `.tf`・`.tfvars` やGitに保存しないでください。
+SSOを使う場合は `aws configure sso --profile kanji-gacha`（初回のみ）と `aws sso login --profile kanji-gacha` で、既存のアクセスキーを使う場合は `aws configure --profile kanji-gacha` で同じプロファイルを用意します。一時認証情報を環境変数で渡す場合は `AWS_SESSION_TOKEN` も必要です。認証情報を `.tf`・`.tfvars` やGitに保存しないでください。
 
-`No valid credential sources found` と `no EC2 IMDS role found` が出る場合、利用可能な認証情報が見つからず、EC2のインスタンスメタデータへの問い合わせも失敗しています。ローカル実行では上記の認証設定を確認してください。`AWS_EC2_METADATA_DISABLED=true` だけを設定しても認証情報は補えません。
+`No valid credential sources found` と `no EC2 IMDS role found` が出る場合、利用可能な認証情報が見つからず、EC2のインスタンスメタデータへの問い合わせも失敗しています。上記の認証設定を確認してください。`AWS_EC2_METADATA_DISABLED=true` だけを設定しても認証情報は補えません。
 
-参考：[AWS CLIのSSO設定](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sso.html)、[AWS Providerの認証設定](https://registry.terraform.io/providers/hashicorp/aws/latest/docs#authentication-and-configuration)。
+参考：[AWS CLIのブラウザ認証](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sign-in.html)、[AWS Providerの認証設定](https://registry.terraform.io/providers/hashicorp/aws/latest/docs#authentication-and-configuration)。
 
-## 配置手順
+## 初回セットアップ
 
-以下は実際にAWSリソースと費用が発生する操作です。実行対象アカウントとplanを確認してから使ってください。この実装作業ではapplyしていません。
+Terraformは1.10以上が必要です（S3バックエンドのネイティブロック `use_lockfile` を使うため）。Actionsでは1.11.4を使います。
 
-1. 認証したシェルで `cd infra` し、`terraform init` → `terraform plan` → `terraform apply` で保存先とECRを作成。手順6の同期コマンドはリポジトリルートから実行。
-2. `terraform output -raw repository_url` でECR URIを確認し、AWS CLIの `ecr get-login-password` を `docker login --password-stdin` に渡して認証。
-3. リポジトリルートで `docker buildx build --platform linux/arm64 --provenance=false -t <ECR URI>:<一意の版> --push .`。
-4. pushしたイメージのdigest URIを `image_uri` に指定してplan/apply。CloudFrontとLambdaを作成。
-5. `terraform output -raw base_url` の値を `base_url` 変数へ設定して再度plan/apply。初回のみ依存循環回避のため2段階としています。この完了までは共有URLがlocalhostを指すため公開しないでください。
-6. 共有HTMLはLambdaがイメージ内の `/app/web/index.html` を返すため、S3へ同期するアセットは必ず同じイメージから取り出す。手元の `web/dist` を同期するとハッシュ付きファイル名が食い違い、共有ページのJS/CSSが403になる。
+### 1. 既存のGitHub OIDC Providerを確認する
 
-   ```bash
-   SPA_BUCKET=$(terraform -chdir=infra output -raw spa_bucket)
-   cid=$(docker create <ECR URI>:<版>)
-   # 取り出し先は毎回作り直す。既存のディレクトリへ docker cp すると中身を
-   # 置き換えず release-web/web として入れ子になり、前回の版を同期してしまう。
-   rm -rf ./release-web && mkdir -p ./release-web
-   docker cp "$cid:/app/web/." ./release-web && docker rm "$cid"
-   aws s3 sync ./release-web/assets "s3://$SPA_BUCKET/assets/" \
-     --cache-control 'public,max-age=31536000,immutable'
-   aws s3 cp ./release-web/index.html "s3://$SPA_BUCKET/index.html" --cache-control 'no-cache'
-   aws s3 cp ./release-web/kanji-ui.otf "s3://$SPA_BUCKET/kanji-ui.otf" --cache-control 'public,max-age=86400'
-   # index.html が参照する実体がS3にあるか確認する
-   grep -o '/assets/[A-Za-z0-9._-]*' ./release-web/index.html | sort -u | while read -r k; do
-     aws s3api head-object --bucket "$SPA_BUCKET" --key "${k#/}" >/dev/null || { echo "missing $k"; exit 1; }
-   done
-   ```
-7. CloudFrontの `/` `/index.html` `/g/*` を無効化。旧共有HTMLが参照するハッシュ付きアセットは、HTMLキャッシュの寿命を超えるまで削除しないでください。
-8. CloudFront経由でPOST→GET→共有HTML→OGPを確認。POSTの本文ハッシュ有／無・改変時の動作、Function URLへの直接呼び出しが拒否されることを確認。
+```bash
+aws iam list-open-id-connect-providers
+```
+
+`token.actions.githubusercontent.com` のARNが既にあれば、次の手順で `github_oidc_provider_arn` に指定して再利用します。1アカウントに同じURLのProviderは1つしか作れません。
+
+### 2. bootstrapを適用し、stateをS3へ移す
+
+stateの保存先バケット自体をこの構成で作るため、初回だけローカルstateで適用し、その後S3へ移します。`infra/bootstrap/terraform.tfvars` に通知先などを書きます（このファイルは `.gitignore` 済みです）。
+
+```hcl
+budget_emails = ["通知先のメールアドレス"]
+# budget_limit_usd         = "1"
+# github_oidc_provider_arn = "arn:aws:iam::473536070013:oidc-provider/token.actions.githubusercontent.com"
+```
+
+```bash
+cd infra/bootstrap
+printf 'terraform {\n  backend "local" {}\n}\n' > local_override.tf
+terraform init
+terraform plan    # state バケット、OIDC Provider、デプロイロール、権限境界、Budget を確認
+terraform apply
+rm local_override.tf
+terraform init -migrate-state   # ローカルstateをS3へコピーするか聞かれたら yes
+terraform plan                  # S3のstateで差分が出ないことを確認
+rm terraform.tfstate terraform.tfstate.backup
+cd ../..
+```
+
+`local_override.tf` は `backend.tf` のS3設定を一時的に置き換えるためのファイルで、Gitには入りません。bootstrapのstateは `bootstrap/terraform.tfstate` に置かれ、デプロイロールからは読み書きできません。以後bootstrapを変更するときは、人の認証で `infra/bootstrap` から `terraform plan` / `apply` します。stateバケットには `prevent_destroy` を付け、バージョニング（旧版は90日で削除）、SSE-S3暗号化、公開ブロック、HTTPSのみのポリシーを設定しています。
+
+バックエンドの設定には変数を使えないため、`infra/backend.tf` と `infra/bootstrap/backend.tf` にはバケット名 `kanji-gacha-473536070013-tfstate` を直接書いています。別アカウントへ移す場合は両方を書き換えてください。
+
+### 3. GitHubを設定する
+
+リポジトリのSettingsで次を設定します。
+
+- Environments に `production` を作り、Deployment branches を `main` のみに制限する。デプロイロールはこのEnvironmentのジョブだけを信頼するため（OIDCの `sub` が `repo:sohohold/kanji-gacha:environment:production`）、この制限がブランチの制限になります。必要なら Required reviewers も設定できます。
+- Variables に `AWS_DEPLOY_ROLE_ARN` を追加し、`terraform -chdir=infra/bootstrap output -raw deploy_role_arn` の値を入れる。未設定の間、デプロイワークフローは実行されずにスキップされます。
+- 任意で `GENERATION_ENABLED`（`true`/`false`、既定 `true`）と `BASE_URL`（独自ドメインへ移すときだけ。未設定ならCloudFrontのドメイン）を追加する。
+
+長期のアクセスキーはGitHubに登録しません。
+
+### 4. 最初のデプロイ
+
+`deploy.yml` が `main` に入ると、以後 `main` へのpushでCIが成功するたびにデプロイされます。Actionsの画面から `Deploy` を手動実行（`main` のみ）しても構いません。初回は次のように進みます。
+
+1. ECR・S3・IAM・ログ等だけを作る（`image_uri` 空）。
+2. イメージをbuild/pushし、そのdigestでLambda・Function URL・CloudFrontを作る。この時点の共有URLはlocalhostを指します。
+3. CloudFrontのドメインを `base_url` に入れて再度apply。ワークフローが疎通確認まで成功するまでは、URLを公開しないでください。
+
+以前このリポジトリの `infra` で `terraform init` した手元の環境では、バックエンドがS3に変わったため `terraform -chdir=infra init -reconfigure` が必要です（applyしていなければ移すstateはありません）。
+
+`vars.AWS_DEPLOY_ROLE_ARN` を設定する前に手元から配置したい場合は、認証したシェルで `scripts/deploy.sh` を実行すると同じ手順を踏みます（aws、terraform、docker buildx、jq、curl、gitが必要）。
+
+## デプロイの流れ
+
+`deploy.yml` は `CI` ワークフローが `main` へのpushで成功したとき（`workflow_run`）に動くので、テストが失敗したコミットはデプロイされません。`[skip ci]` を付けたコミットもCIが走らないためデプロイされません。`workflow_run` は既定ブランチにあるワークフロー定義で動く点に注意してください。同時実行は1つに限り、実行中のものは取り消しません。
+
+`scripts/deploy.sh` の処理は次のとおりです。
+
+1. `terraform init`。stateに記録された前回のコミット（出力 `release`）が今回のコミットを含んでいれば、古い版で上書きしないよう終了する。CIの完了順が前後しても新しい版が戻されません。同じコミットの再実行は続行します。
+2. 初回のみ、`image_uri` を空にしてECRとバケットを作る。
+3. コミットSHAをタグにarm64イメージを `--provenance=false` でbuild/pushする。タグは上書き不可なので、同じコミットの再実行では既存のイメージを再利用する。
+4. pushしたdigestのイメージを取り出し、その中の `/app/web` を静的ファイルとして使う。共有HTMLはLambdaがイメージ内の `index.html` から返すため、手元の `web/dist` を使うとハッシュ付きファイル名が食い違います。
+5. ハッシュ付きアセットを先にS3へ追加する（1年・immutable）。旧版のアセットは削除しません。キャッシュされた旧HTMLが参照し続けるためです。
+6. digestを指定して `plan -out` し、削除・置換を含むplanなら中止してからそのplanをapplyする。`base_url` はstateの値（初回はCloudFrontのドメイン）か `vars.BASE_URL` を必ず渡し、既定値のlocalhostへ戻しません。
+7. `kanji-ui.otf` と `index.html`（`no-cache`）をアップロードし、`index.html` が参照する実体がS3にあるか確認する。
+8. CloudFrontの `/` `/index.html` `/g/*` `/kanji-ui.otf` を無効化し、完了を待つ。
+9. CloudFront経由でトップ・アセット・フォント・API（不正IDで400）・共有ページ（存在しないIDで404のSPA）を確認し、Function URLへの直接呼び出しが403になることを確認する。生成（POST）はしないので、確認のたびに結果が保存されることはありません。
+
+Dockerfileのweb・Goのステージはビルドマシンの環境で動き、Goは `GOARCH` を指定してクロスコンパイルします。amd64のランナーでもQEMUによるエミュレーションなしでarm64イメージを作れます。
+
+### 削除を含むplanで止まった場合
+
+リソース名の変更などで削除・置換が必要な変更は、ワークフローでは適用しません。手元の認証で内容を確認し、現在のイメージとURLを指定してapplyしてください。`image_uri` や `base_url` を省略すると既定値（空・localhost）に戻り、Lambda等の削除や共有URLの破損につながります。
+
+```bash
+terraform -chdir=infra output   # release, base_url を確認
+IMAGE=$(aws lambda get-function --function-name kanji-gacha --query 'Code.ImageUri' --output text)
+terraform -chdir=infra plan -out=manual.tfplan -var "image_uri=$IMAGE" \
+  -var "base_url=$(terraform -chdir=infra output -raw base_url)" \
+  -var "release=$(terraform -chdir=infra output -raw release)"
+terraform -chdir=infra apply manual.tfplan
+```
+
+## 運用
+
+新規生成を止めるには、リポジトリ変数 `GENERATION_ENABLED` を `false` にして `Deploy` を手動実行します（同じコミットの再デプロイになります）。POSTは503を返し、保存済み結果の閲覧は続きます。変数を戻して再実行すると再開します。手元からapplyして切り替えた場合も、次のデプロイで変数の値に戻る点に注意してください。
+
+AWS Budgetsは、アカウント全体の実コストが月 `budget_limit_usd`（既定1 USD）を超えたときに `budget_emails` へメールします。通知するだけで、何も止めません。アプリだけを対象にするにはコスト配分タグの設計が必要で、今は未対応です。
+
+## 監視（CloudWatch埋め込みメトリクス）
+
+Lambdaの環境変数 `METRICS_NAMESPACE=KanjiGacha` が設定されていると、APIは生成のたびにEMF形式のJSONを1行、標準出力へ書きます。CloudWatch Logsがロググループ `/aws/lambda/kanji-gacha` からメトリクスを取り出すので、PutMetricDataの権限や追加の設定は要りません。通常のログは標準エラーへ日時付きで出るため、EMFの行とは混ざりません。
+
+| メトリクス | 単位 | ディメンション | 内容 |
+| --- | --- | --- | --- |
+| `GenerationTime` | Milliseconds | なし | 生成器（`Engine.Generate`）の所要時間。入力検証・保存は含まない。成功時のみ |
+| `Glyphs` | Count | `Rarity`（N/R/SR/SSR/UR） | 抽選されたレアリティの件数。保存に失敗した抽選も含む |
+| `Fallback` | Count | なし | 退避候補を返した件数（成功件数に対する割合が退避率） |
+| `GenerationFailed` | Count | なし | 生成器がエラーを返した件数 |
+
+入力・読み・SVG・生成ID・IPはメトリクスにもログにも書きません。形式エラー、生成停止中、レート制限で生成器まで届かなかった要求は数えません。カスタムメトリクスは名前とディメンション値の組ごとに課金されるため、ディメンションはレアリティだけにしてあり、全部で8個です（無料枠の10個以内）。ディメンションやメトリクスを増やすときは費用を確認してください。
+
+値はCloudWatchコンソールの Metrics → `KanjiGacha` で見られます。ダッシュボードとアラームは閾値が未決定のため作っていません。
+
+## 権限の設計
+
+デプロイロール（`kanji-gacha-deploy`）の権限は `infra/bootstrap/main.tf` にあります。stateは `app/` 配下だけ、ECR・S3・Lambda・ロググループはこのアプリの名前のARNに限っています。CloudFrontはIDが作成時に決まるためARNで絞れず、作成・更新・無効化の操作だけを許可しています。バケット・リポジトリ・関数・distributionの削除権限は与えていません。
+
+Lambda実行ロールは権限境界 `kanji-gacha-lambda-boundary` を付けたときだけ作成・変更できます。境界は結果バケットの `glyphs/*`・`og/*` の読み書き、そのListBucket、ロググループへの書き込みに限られるため、Terraform経由でインラインポリシーを書き換えてもLambdaの権限はそれ以上に広がりません。`iam:PassRole` はこのロールをLambdaへ渡す場合だけです。境界ポリシーはアプリ構成より先に存在する必要があるので、bootstrapを先に適用してください。
+
+アプリ側のIAMは結果バケットの `glyphs/*` と `og/*` のGet/Put、および404判定に必要な限定的ListBucketを許可します。Lambdaへの呼び出し権限は対象CloudFront distribution ARNに限定します。
 
 結果JSON・PNGには削除ライフサイクルを設定していません。S3をSPA同期先と結果保存先で分けているため、フロントの同期が生成結果を削除することはありません。
 
-IAMは結果バケットの `glyphs/*` と `og/*` のGet/Put、および404判定に必要な限定的ListBucketを許可します。Lambdaへの呼び出し権限は対象CloudFront distribution ARNに限定します。
+## 未確認の事項
 
-未実装：GitHub ActionsのAWS OIDCデプロイロール、applyを含むデプロイワークフロー、Budgets通知、EMF監視。既存アカウントのIAM/OIDC設定は未調査なので、自動で変更していません。これらとAWS上の実動確認を終えてから公開してください。
-
-Terraform stateはローカル保存です。チーム運用へ進む場合は、アクセス制御されたリモートバックエンドとstateロックを設定してください。
+bootstrapとアプリ構成のapply、OIDCでのロール引受、Actions経由のデプロイ、Budgetsの通知、CloudWatchでのメトリクス抽出は、まだAWS上で確認していません。デプロイロールの権限はTerraformとAWS CLIが呼ぶAPIから設計したもので、初回のデプロイで不足が見つかった場合は `AccessDenied` のアクションを追加してください。公開前に、CloudFront経由のPOST→GET→共有HTML→OGP、POSTの本文ハッシュ有／無・改変時の動作も確認してください。

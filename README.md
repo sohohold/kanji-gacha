@@ -53,6 +53,7 @@ docker compose up --build
 | `GENERATOR_CONFIG` | 未設定なら同梱した `config/generator.json` |
 | `GENERATION_ENABLED` | `false` で新規生成だけ停止 |
 | `TRUST_CLOUDFRONT` | `true` はOACでオリジンを限定したAWS環境だけ。IP制限で転送ヘッダーを参照 |
+| `METRICS_NAMESPACE` | 設定すると生成時間・レアリティ分布をCloudWatch埋め込みメトリクスとして標準出力へ書く |
 
 ## 検証
 
@@ -78,9 +79,9 @@ GoとTSは `shared/kana-cases.json` の同じ受理／拒否例を検証しま�
 
 ## AWS
 
-[infra/README.md](infra/README.md) にECR・Lambda・CloudFront・S3の構築手順を記載しています。VPC接続はありません。Terraform、Dockerfile、CIは用意していますが、AWSへのデプロイ・実環境でのOAC検証はまだ行っていません。費用は仕様書7.2の仮定を実測で更新してください。
+[infra/README.md](infra/README.md) に、stateバケット・OIDCデプロイロール・Budgetsを作るbootstrap構成、ECR・Lambda・CloudFront・S3のアプリ構成、GitHub Actionsのデプロイ（`.github/workflows/deploy.yml` と `scripts/deploy.sh`）の手順を記載しています。VPC接続はありません。これらはまだAWSへ適用しておらず、実環境でのデプロイ・OAC検証・メトリクス抽出は未確認です。費用は仕様書7.2の仮定を実測で更新してください。
 
-公開前の残作業：実環境のOAC・POSTハッシュ検証、字形の目視調整、NGワード辞書の拡充（現在2語の最小実装）、Budgets通知、EMF計測、デプロイ用OIDCロール／ワークフロー。PGO・夜間fuzz・カバレッジ閾値・静的lintの整備は別途行います。
+公開前の残作業：bootstrapの適用とGitHubのEnvironment・変数の設定、実環境でのデプロイ・OAC・POSTハッシュ検証、字形の目視調整、NGワード辞書の拡充（現在2語の最小実装）。PGO・夜間fuzz・カバレッジ閾値・静的lintの整備は別途行います。
 
 ## データのライセンス
 
