@@ -111,11 +111,6 @@ input[aria-invalid="true"] {
 .progress-indicator-bar {
   animation: fill 0.4s steps(12) forwards;
 }
-.hint {
-  margin: 0;
-  color: #444;
-  font-size: 11px;
-}
 .sunken {
   background: #fff;
   box-shadow:
@@ -174,13 +169,14 @@ fieldset {
   padding: 0 20px;
   height: 28px;
 }
-.status-bar {
-  flex-direction: column;
-}
 .status-bar-field {
-  font-size: 10px;
-  line-height: 1.6;
+  font-size: 8px;
+  line-height: 1.5;
   padding: 2px 4px;
+  text-align: center;
+}
+.status-bar-field span {
+  white-space: nowrap;
 }
 .status-bar-field a {
   color: var(--navy);

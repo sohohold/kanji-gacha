@@ -153,7 +153,7 @@ function App() {
       <div className={`window ${inResult ? "result" : "home"}`}>
         <div className="title-bar">
           <div className="title-bar-text">
-            {inResult && g ? `${g.reading.display} - ` : ""}KANJI GACHA 98
+            {inResult && g ? `${g.reading.display} - ` : ""}架空漢字ガチャ
           </div>
           {inResult && (
             <div className="title-bar-controls">
@@ -324,34 +324,35 @@ function App() {
                   </div>
                 </div>
               </form>
-              <p className="hint">
-                生成結果と読みは共有URLから公開で閲覧できます。
-              </p>
             </>
           )}
         </div>
         <footer className="status-bar">
           <p className="status-bar-field">
-            字形 <a href="https://kanjivg.tagaini.net/">KanjiVG</a> © Ulrich
-            Apel（改変・
-            <a href="https://creativecommons.org/licenses/by-sa/3.0/">
-              CC BY-SA 3.0
-            </a>
-            ）
-          </p>
-          <p className="status-bar-field">
-            読み{" "}
-            <a href="https://www.edrdg.org/wiki/index.php/KANJIDIC_Project">
-              KANJIDIC2
-            </a>{" "}
-            © EDRDG（
-            <a href="https://www.edrdg.org/edrdg/licence.html">CC BY-SA 4.0</a>
-            ）
-          </p>
-          <p className="status-bar-field">
-            フォント{" "}
-            <a href="https://github.com/notofonts/noto-cjk">Noto CJK</a> ©
-            Adobe（<a href="https://openfontlicense.org/">OFL 1.1</a>）
+            <span>
+              <a href="https://kanjivg.tagaini.net/">KanjiVG</a> © Ulrich Apel
+              (改変,{" "}
+              <a href="https://creativecommons.org/licenses/by-sa/3.0/">
+                CC BY-SA 3.0
+              </a>
+              )
+            </span>{" "}
+            /{" "}
+            <span>
+              <a href="https://www.edrdg.org/wiki/index.php/KANJIDIC_Project">
+                KANJIDIC2
+              </a>{" "}
+              © EDRDG (
+              <a href="https://www.edrdg.org/edrdg/licence.html">
+                CC BY-SA 4.0
+              </a>
+              )
+            </span>{" "}
+            /{" "}
+            <span>
+              <a href="https://github.com/notofonts/noto-cjk">Noto CJK</a> ©
+              Adobe (<a href="https://openfontlicense.org/">OFL 1.1</a>)
+            </span>
           </p>
         </footer>
       </div>
