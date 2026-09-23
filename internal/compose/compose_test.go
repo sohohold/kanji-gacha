@@ -28,11 +28,11 @@ func testEngine(t *testing.T) *Engine {
 func TestGenerationLimits(t *testing.T) {
 	e := testEngine(t)
 	r, _ := kana.Validate(kana.Input{Mode: "on", Reading: "セイ"})
-	groups := e.plans(r, []int{3})[3]
+	ph := e.rank(r.Morae, r.Mode, r.Okurigana)[0]
 	rng := rand.New(rand.NewChaCha8([32]byte{1}))
 	for _, rarity := range e.Config.Rarities {
-		for i := 0; i < 5; i++ {
-			res, err := e.attempt(groups, rarity.MaxParts, rarity.MaxDepth, rarity.Temperature, rng, false)
+		for i := 0; i < 20; i++ {
+			res, err := e.attempt(ph, rarity.MaxParts, rarity.MaxDepth, rng, coreSize(rarity, rng))
 			if err != nil {
 				continue
 			}
@@ -45,8 +45,8 @@ func TestGenerationLimits(t *testing.T) {
 			}
 			var check func(*model.Node, int)
 			check = func(n *model.Node, d int) {
-				if d > e.Config.MaxDepth {
-					t.Fatal("depth")
+				if d > rarity.MaxDepth {
+					t.Fatalf("%s: depth %d", rarity.Name, d)
 				}
 				if n.Operator != "" && len(n.Children) != 2 {
 					t.Fatal("arity")
@@ -58,14 +58,14 @@ func TestGenerationLimits(t *testing.T) {
 			check(res.tree, 0)
 		}
 	}
-	for _, read := range []string{"セイ", "トウキョウ", "タイト"} {
-		r, _ := kana.Validate(kana.Input{Mode: "on", Reading: read})
+	for _, in := range []kana.Input{{Mode: "on", Reading: "セイ"}, {Mode: "kun", Reading: "トウキョウ"}, {Mode: "kun", Reading: "タイト"}, {Mode: "kun", Reading: "きも", Okurigana: "い"}} {
+		r, _ := kana.Validate(in)
 		g, err := e.Generate(context.Background(), r, time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC))
 		if err != nil {
 			t.Fatal(err)
 		}
 		if g.SVG == "" || g.IDS == "" || g.Strokes <= 0 {
-			t.Fatalf("empty result %s", read)
+			t.Fatalf("empty result %s", in.Reading)
 		}
 	}
 }
@@ -86,70 +86,58 @@ func TestRarityDistribution(t *testing.T) {
 	}
 }
 
-// A frame must occupy a slot of its own: before this, it overwrote parts[0] and
-// the reading part chosen for the first segment vanished from the glyph.
-func TestFrameKeepsReadingParts(t *testing.T) {
+// Every glyph keeps exactly one reading character (the phonetic, possibly
+// repeated) and wraps it in radicals chosen independently of the reading.
+func TestPhoneticWithRadicals(t *testing.T) {
 	e := testEngine(t)
-	if len(e.frames) == 0 {
-		t.Skip("no frame parts in the bundled dictionary")
-	}
-	r, _ := kana.Validate(kana.Input{Mode: "on", Reading: "セイ"})
+	r, _ := kana.Validate(kana.Input{Mode: "kun", Reading: "キモ", Okurigana: "イ"})
+	ph := e.rank(r.Morae, r.Mode, r.Okurigana)[0]
 	rng := rand.New(rand.NewChaCha8([32]byte{3}))
-	for _, count := range []int{3, 4, 5} {
-		groups := e.plans(r, []int{slotKey(count, true)})[slotKey(count, true)]
-		for i := 0; i < 20; i++ {
-			res, err := e.attempt(groups, count, 4, 0.5, rng, true)
-			if err != nil {
-				continue
-			}
-			if len(res.components) != count {
-				t.Fatalf("count=%d: got %d components", count, len(res.components))
-			}
-			readings := 0
-			for _, c := range res.components {
-				if c.Role == "reading" {
-					readings++
+	seen := map[string]bool{}
+	for i := 0; i < 300; i++ {
+		res, err := e.attempt(ph, 2, 1, rng, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		readings := 0
+		for _, c := range res.components {
+			if c.Role == "reading" {
+				readings++
+				if c.Char != ph.part.Char {
+					t.Fatalf("reading component %s, want %s", c.Char, ph.part.Char)
 				}
-			}
-			if readings < len(groups) {
-				t.Fatalf("count=%d: %d reading components for %d segments", count, readings, len(groups))
+			} else {
+				seen[c.Char] = true
 			}
 		}
+		if readings != 1 || len(res.components) != 2 {
+			t.Fatalf("components %+v", res.components)
+		}
+	}
+	// 音を持たない偏・部首が実際に出ること。
+	for _, c := range []string{"氵", "亻", "扌", "艹"} {
+		if !seen[c] {
+			t.Errorf("radical %s never drawn in 300 attempts (%d kinds seen)", c, len(seen))
+		}
+	}
+	if len(seen) < 40 {
+		t.Errorf("only %d radicals seen", len(seen))
 	}
 }
 
-// The number of segments must never exceed the reading slots a candidate has,
-// or the tail of the reading never reaches the glyph (spec 3.3).
-func TestSegmentsFitAvailableSlots(t *testing.T) {
+func TestRadicalFramesHaveInnerBoxes(t *testing.T) {
 	e := testEngine(t)
-	r, _ := kana.Validate(kana.Input{Mode: "on", Reading: "トウキョウ"})
-	for _, rarity := range e.Config.Rarities {
-		slots := []int{slotKey(1, false)}
-		for n := rarity.MinParts; n <= rarity.MaxParts; n++ {
-			slots = append(slots, slotKey(n, false), slotKey(n, true))
-		}
-		plans := e.plans(r, slots)
-		for n := rarity.MinParts; n <= rarity.MaxParts; n++ {
-			for _, frame := range []bool{false, true} {
-				if frame && n < 3 { // Generate only frames candidates of three parts or more.
-					continue
-				}
-				groups, ok := plans[slotKey(n, frame)]
-				if !ok {
-					t.Fatalf("%s n=%d frame=%v: no plan", rarity.Name, n, frame)
-				}
-				available := n
-				if frame {
-					available = n - 1
-				}
-				if len(groups) > available {
-					t.Fatalf("%s n=%d frame=%v: %d segments for %d slots", rarity.Name, n, frame, len(groups), available)
-				}
+	frames := 0
+	for _, r := range e.rads {
+		switch r.position {
+		case "tare", "nyo", "kamae":
+			frames++
+			if _, ok := r.frame(r.variants[0]); !ok {
+				t.Errorf("%s has no inner box", r.char)
 			}
 		}
 	}
-	// The single-part fallback ranks the whole reading, not just its head.
-	if got := len(e.plans(r, []int{1})[1]); got != 1 {
-		t.Fatalf("fallback plan has %d segments", got)
+	if frames == 0 {
+		t.Fatal("no frame radicals")
 	}
 }

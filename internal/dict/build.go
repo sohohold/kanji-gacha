@@ -123,7 +123,15 @@ func Build(kvg, kdic, overrides []byte) (Dictionary, error) {
 		Sources map[string]bool
 	}
 	stats := map[string]*acc{}
-	counts := map[string]int{}
+	// 位置別の字形は元の字の主要な分割（ルート直下）で大きく描かれたものを優先して残す。
+	type variant struct {
+		part   Part
+		key    string
+		direct bool
+		span   float64
+		order  int
+	}
+	var variants []variant
 	total := 0
 	sort.Slice(archive.File, func(i, j int) bool { return archive.File[i].Name < archive.File[j].Name })
 	for _, f := range archive.File {
@@ -155,8 +163,8 @@ func Build(kvg, kdic, overrides []byte) (Dictionary, error) {
 			continue
 		}
 		total++
-		var visit func(Group)
-		visit = func(g Group) {
+		var visit func(Group, int)
+		visit = func(g Group, depth int) {
 			if g.Element != "" && g.Part == "" && g.Partial != "true" {
 				o := ov[g.ID]
 				if !o.Exclude {
@@ -207,10 +215,11 @@ func Build(kvg, kdic, overrides []byte) (Dictionary, error) {
 							}
 							a.Sources[root.Element] = true
 						}
-						key := g.Element + ":" + pos
-						if counts[key] < 3 || pos == "whole" || o.Inner != nil {
-							counts[key]++
-							d.Parts = append(d.Parts, Part{ID: g.ID, Char: g.Element, Original: alias, Source: root.Element, Position: pos, Paths: paths, Bounds: render.Bounds(paths), On: on[alias], Kun: kun[alias], Inner: o.Inner, Operator: o.Operator})
+						part := Part{ID: g.ID, Char: g.Element, Original: alias, Source: root.Element, Position: pos, Paths: paths, Bounds: render.Bounds(paths), On: on[alias], Kun: kun[alias], Inner: o.Inner, Operator: o.Operator}
+						if pos == "whole" || o.Inner != nil {
+							d.Parts = append(d.Parts, part)
+						} else {
+							variants = append(variants, variant{part, g.Element + ":" + pos, depth == 1, span(part), len(variants)})
 						}
 					} else {
 						d.Report["invalidPaths"]++
@@ -225,7 +234,7 @@ func Build(kvg, kdic, overrides []byte) (Dictionary, error) {
 					key := child.Element + ":" + child.Number
 					merged[key] = append(merged[key], child)
 				} else {
-					visit(child)
+					visit(child, depth+1)
 				}
 			}
 			keys := make([]string, 0, len(merged))
@@ -254,11 +263,32 @@ func Build(kvg, kdic, overrides []byte) (Dictionary, error) {
 				for _, x := range gs {
 					m.Paths = append(m.Paths, allPaths(x)...)
 				}
-				visit(m)
+				visit(m, depth+1)
 				d.Report["mergedParts"]++
 			}
 		}
-		visit(root)
+		visit(root, 0)
+	}
+	sort.SliceStable(variants, func(i, j int) bool {
+		a, b := variants[i], variants[j]
+		if a.key != b.key {
+			return a.key < b.key
+		}
+		if a.direct != b.direct {
+			return a.direct
+		}
+		return a.span > b.span
+	})
+	var kept []variant
+	for i, v := range variants {
+		if i >= 3 && variants[i-3].key == v.key {
+			continue
+		}
+		kept = append(kept, v)
+	}
+	sort.Slice(kept, func(i, j int) bool { return kept[i].order < kept[j].order })
+	for _, v := range kept {
+		d.Parts = append(d.Parts, v.part)
 	}
 	for i := range d.Parts {
 		p := &d.Parts[i]
@@ -290,6 +320,17 @@ func Build(kvg, kdic, overrides []byte) (Dictionary, error) {
 		return d, e
 	}
 	return d, nil
+}
+
+// span is a variant's extent across its attachment axis.
+func span(p Part) float64 {
+	switch p.Position {
+	case "left", "right":
+		return p.Bounds.H
+	case "top", "bottom":
+		return p.Bounds.W
+	}
+	return p.Bounds.W * p.Bounds.H
 }
 
 // LegendChars are the whole-glyph assets the special slots draw from; a build

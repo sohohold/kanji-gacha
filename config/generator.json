@@ -1,14 +1,14 @@
 {
-  "version": 1, "canvas": 109, "margin": 4, "gap": 3, "strokeWidth": 2.5,
+  "version": 2, "canvas": 109, "margin": 4, "gap": 3, "strokeWidth": 2.5,
   "minSlot": 8, "minRatio": 0.35, "maxRatio": 0.65,
-  "maxParts": 16, "maxDepth": 6, "maxStrokes": 160,
+  "maxParts": 16, "maxDepth": 8, "maxStrokes": 160,
   "candidates": 32, "workers": 2, "timeoutMs": 200, "topK": 16,
   "alpha": 0.5, "beta": 0.25, "gamma": 0.1,
   "rarities": [
-    {"name":"N", "weight":7000, "minParts":1, "maxParts":2, "maxDepth":1, "temperature":0.3},
+    {"name":"N", "weight":7000, "minParts":2, "maxParts":2, "maxDepth":1, "temperature":0.3},
     {"name":"R", "weight":2000, "minParts":3, "maxParts":3, "maxDepth":2, "temperature":0.5},
-    {"name":"SR", "weight":700, "minParts":4, "maxParts":5, "maxDepth":3, "temperature":0.8},
-    {"name":"SSR", "weight":250, "minParts":6, "maxParts":9, "maxDepth":4, "temperature":1.1},
-    {"name":"UR", "weight":50, "minParts":10, "maxParts":16, "maxDepth":6, "temperature":1.5}
+    {"name":"SR", "weight":700, "minParts":4, "maxParts":5, "maxDepth":4, "temperature":0.8},
+    {"name":"SSR", "weight":250, "minParts":6, "maxParts":8, "maxDepth":6, "temperature":1.1},
+    {"name":"UR", "weight":50, "minParts":9, "maxParts":12, "maxDepth":8, "temperature":1.5}
   ]
 }
