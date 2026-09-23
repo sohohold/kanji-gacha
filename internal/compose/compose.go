@@ -10,6 +10,7 @@ import (
 	"kanji-gacha/internal/model"
 	"kanji-gacha/internal/render"
 	"kanji-gacha/internal/vector"
+	"log"
 	"math"
 	"math/rand/v2"
 	"sort"
@@ -425,7 +426,9 @@ func (e *Engine) Generate(ctx context.Context, r kana.Reading, now time.Time) (m
 			}
 		}
 		// The build verifies these assets, so this only happens if a dictionary
-		// slipped through; draw a normal glyph rather than failing the request.
+		// slipped through; draw a normal glyph rather than failing the request,
+		// and say so, since the draw itself looks like any other.
+		log.Printf("special glyph %s could not be drawn; drew a normal glyph instead", special)
 	}
 	cands := e.rank(r.Morae, r.Mode, r.Okurigana)
 	if len(cands) == 0 {

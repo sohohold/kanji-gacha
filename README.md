@@ -57,21 +57,26 @@ docker compose up --build
 
 ## 検証
 
+CI（`.github/workflows/ci.yml`）と同じ手順をローカルで実行できます。
+
 ```sh
-go test ./...
-go test -race ./... # Cコンパイラが必要
 go vet ./...
+go test -race ./... # Cコンパイラが必要
+go test ./internal/kana -run '^$' -fuzz FuzzDecode -fuzztime 30s
 cd web
-pnpm run test
-pnpm run build
+pnpm install --frozen-lockfile
+pnpm run types && git diff --exit-code -- src/api.generated.ts
+pnpm run format:check && pnpm run build && pnpm run test
 pnpm exec playwright install --with-deps chromium
-# 別ターミナルで go run ./cmd/api を起動してから
+# リポジトリのルートで go run ./cmd/api を起動してから（WEB_DIR の既定値は web/dist）
 pnpm run e2e
 ```
 
+Playwrightのブラウザが別の場所にある場合は `CHROMIUM_PATH` で指定します。
+
 GoとTSは `shared/kana-cases.json` の同じ受理／拒否例を検証します。APIテストは保存失敗、同時OGP要求、保存済み結果の取得を含みます。E2Eは生成→共有→再表示、OGP、IME、不正入力、訓読み、特殊枠、モバイルを確認します。
 
-`api/openapi.yaml` が公開APIの契約です。TS型の再生成は `cd web && pnpm run types`。Goハンドラは現時点では手書きで、oapi-codegenへの移行とスキーマ自動適合検証は未実施です。
+`api/openapi.yaml` が公開APIの契約です。変更したら `cd web && pnpm run types` で `web/src/api.generated.ts` を再生成してコミットしてください（CIが差分を検査します）。Goハンドラは現時点では手書きで、oapi-codegenへの移行とスキーマ自動適合検証は未実施です。
 
 ## 辞書・フォントの更新
 
@@ -79,9 +84,9 @@ GoとTSは `shared/kana-cases.json` の同じ受理／拒否例を検証しま�
 
 ## AWS
 
-[infra/README.md](infra/README.md) に、stateバケット・OIDCデプロイロール・Budgetsを作るbootstrap構成、ECR・Lambda・CloudFront・S3のアプリ構成、GitHub Actionsのデプロイ（`.github/workflows/deploy.yml` と `scripts/deploy.sh`）の手順を記載しています。VPC接続はありません。これらはまだAWSへ適用しておらず、実環境でのデプロイ・OAC検証・メトリクス抽出は未確認です。費用は仕様書7.2の仮定を実測で更新してください。
+[infra/README.md](infra/README.md) に、stateバケット・OIDCデプロイロール・Budgetsを作るbootstrap構成、ECR・Lambda・CloudFront・S3のアプリ構成、GitHub Actionsのデプロイ（`.github/workflows/deploy.yml` と `scripts/deploy.sh`）の手順を記載しています。VPC接続はありません。2026-09-23に両構成を適用し、GitHub Actionsからのデプロイまで動作しています。実環境での確認状況は同READMEの「実環境での確認状況」にあります。費用は仕様書7.2の仮定を実測で更新してください。
 
-公開前の残作業：bootstrapの適用とGitHubのEnvironment・変数の設定、実環境でのデプロイ・OAC・POSTハッシュ検証、字形の目視調整、NGワード辞書の拡充（現在2語の最小実装）。PGO・夜間fuzz・カバレッジ閾値・静的lintの整備は別途行います。
+残作業：字形の目視調整、NGワード辞書の拡充（現在2語の最小実装）。PGO・夜間fuzz・カバレッジ閾値・静的lintの整備は別途行います。
 
 ## データのライセンス
 

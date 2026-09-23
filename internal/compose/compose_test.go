@@ -1,14 +1,18 @@
 package compose
 
 import (
+	"bytes"
 	"context"
 	"kanji-gacha/config"
 	"kanji-gacha/internal/dict"
 	"kanji-gacha/internal/kana"
 	"kanji-gacha/internal/model"
 	"kanji-gacha/internal/render"
+	"log"
 	"math"
 	"math/rand/v2"
+	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -253,5 +257,26 @@ func TestRadicalFramesHaveInnerBoxes(t *testing.T) {
 	}
 	if frames == 0 {
 		t.Fatal("no frame radicals")
+	}
+}
+
+// A special glyph whose parts are missing falls back to a normal draw, and
+// leaves a log line saying so rather than passing silently.
+func TestMissingSpecialIsLogged(t *testing.T) {
+	e := testEngine(t)
+	delete(e.whole, "龍")
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	r, _ := kana.Validate(kana.Input{Mode: "kun", Reading: "タイト"})
+	g, err := e.Generate(context.Background(), r, time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g.Legend != nil {
+		t.Fatalf("drew legend %s without its parts", *g.Legend)
+	}
+	if !strings.Contains(buf.String(), "special glyph taito could not be drawn") {
+		t.Fatalf("no log line: %q", buf.String())
 	}
 }

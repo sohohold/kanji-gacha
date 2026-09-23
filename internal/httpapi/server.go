@@ -17,6 +17,7 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -129,10 +130,10 @@ func problem(w http.ResponseWriter, status int, code string, issue *kana.Issue) 
 }
 
 // viewerIP reads the address out of a CloudFront-Viewer-Address value, which
-// carries a port: "198.51.100.7:52011" or "[2001:db8::1]:52011". An unbracketed
-// IPv6 value is handled too, since the exact shape is not guaranteed. A value
-// this cannot resolve is dropped, leaving the shared RemoteAddr bucket, which
-// is restrictive rather than exploitable.
+// carries a port: "198.51.100.7:52011", and for IPv6 an unbracketed
+// "2001:db8::1:52011". A bracketed value is accepted too. A value this cannot
+// resolve is dropped, leaving the shared RemoteAddr bucket, which is
+// restrictive rather than exploitable.
 func viewerIP(v string) string {
 	if v == "" {
 		return ""
@@ -159,6 +160,18 @@ func viewerIP(v string) string {
 	}
 	return ""
 }
+
+// rateKey groups IPv6 addresses by /64. One subscriber is usually handed a
+// whole /64 and can use any address in it, so keying on the full address would
+// let one viewer mint buckets at will.
+func rateKey(ip string) string {
+	a, e := netip.ParseAddr(ip)
+	if e != nil || !a.Is6() || a.Is4In6() {
+		return ip
+	}
+	p, _ := a.Prefix(64)
+	return p.String()
+}
 func (s *Server) allow(r *http.Request) bool {
 	ip, _, e := net.SplitHostPort(r.RemoteAddr)
 	if e != nil {
@@ -172,6 +185,7 @@ func (s *Server) allow(r *http.Request) bool {
 			ip = v
 		}
 	}
+	ip = rateKey(ip)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := s.Now()
@@ -347,10 +361,11 @@ func (s *Server) shareError(w http.ResponseWriter, status int) {
 }
 
 // rereadAfterConflict fetches the object whose conditional PUT won the race.
-// That write can take a moment to become readable, so a missing object is
-// retried; anything else is reported. The locally rendered bytes are never
-// substituted: a rolling deployment can have instances on different renderer or
-// font versions, and serving a variant of the stored object under an immutable
+// ErrExists can still stand for a competing write in progress (S3's 409, once
+// PutIfAbsent's own retries run out), so a missing object is retried; anything
+// else is reported. The locally rendered bytes are never substituted: a
+// rolling deployment can have instances on different renderer or font
+// versions, and serving a variant of the stored object under an immutable
 // cache policy would pin the difference for a year.
 func (s *Server) rereadAfterConflict(ctx context.Context, key string) ([]byte, error) {
 	for delay := 25 * time.Millisecond; ; delay *= 2 {
