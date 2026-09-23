@@ -149,6 +149,15 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
+        /** @description The SPA without OGP metadata and not cached; it fetches the glyph from the API and shows the failure */
+        SharePageError: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "text/html": string;
+            };
+        };
     };
     parameters: {
         ID: string;
@@ -227,6 +236,9 @@ export interface operations {
                     "text/html": string;
                 };
             };
+            400: components["responses"]["SharePageError"];
+            404: components["responses"]["SharePageError"];
+            503: components["responses"]["SharePageError"];
             default: components["responses"]["Problem"];
         };
     };

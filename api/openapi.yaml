@@ -46,6 +46,12 @@ paths:
           content:
             text/html:
               schema: {type: string}
+        '400':
+          $ref: '#/components/responses/SharePageError'
+        '404':
+          $ref: '#/components/responses/SharePageError'
+        '503':
+          $ref: '#/components/responses/SharePageError'
         default:
           $ref: '#/components/responses/Problem'
   /og/{id}.png:
@@ -75,6 +81,11 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
+    SharePageError:
+      description: The SPA without OGP metadata and not cached; it fetches the glyph from the API and shows the failure
+      content:
+        text/html:
+          schema: {type: string}
   schemas:
     Input:
       type: object

@@ -62,6 +62,18 @@ test("kun input on mobile", async ({ page }) => {
   ).toBeTruthy();
 });
 test("unknown share link has an error", async ({ page }) => {
-  await page.goto("/g/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-  await expect(page.locator("body")).toContainText("Not Found");
+  const res = await page.goto("/g/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  expect(res?.status()).toBe(404);
+  await expect(
+    page
+      .getByRole("alert")
+      .filter({ hasText: "生成結果が見つかりませんでした。" }),
+  ).toBeVisible();
+});
+test("malformed share link has an error", async ({ page }) => {
+  const res = await page.goto("/g/no");
+  expect(res?.status()).toBe(400);
+  await expect(
+    page.getByRole("alert").filter({ hasText: "共有URLを確認してください。" }),
+  ).toBeVisible();
 });
