@@ -35,6 +35,63 @@ function message(e: unknown): string {
   }
   return "接続できませんでした。通信環境をご確認ください。";
 }
+const reactions: Record<Glyph["rarity"], [string[], number]> = {
+  N: [["👍", "🙂", "✨", "👀", "📝", "🍵"], 18],
+  R: [["🎉", "👏", "😆", "💫", "🔥", "🙌"], 32],
+  SR: [["🔥", "😍", "🤩", "💥", "⚡", "🎊", "💜"], 50],
+  SSR: [["🤯", "💎", "🌈", "🏆", "🎆", "😱", "🧡", "🚀"], 80],
+  UR: [["👑", "🐉", "🌟", "💰", "🎇", "🙏", "😭", "🌈", "⛩️"], 130],
+};
+function burst(rarity: Glyph["rarity"]) {
+  const [emojis, count] = reactions[rarity];
+  const layer = document.createElement("div");
+  layer.className = "reactions";
+  layer.setAttribute("aria-hidden", "true");
+  document.body.append(layer);
+  const h = innerHeight;
+  for (let i = 0; i < count; i++) {
+    const el = document.createElement("span");
+    el.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+    el.style.left = `${5 + Math.random() * 90}%`;
+    el.style.fontSize = `${22 + Math.random() * 26}px`;
+    layer.append(el);
+    const sway = (Math.random() - 0.5) * 120;
+    const spin = (Math.random() - 0.5) * 60;
+    el.animate(
+      [
+        { transform: "translate(0, 0) scale(0.4)", opacity: 0 },
+        {
+          transform: `translate(${sway * 0.4}px, ${-h * 0.25}px) scale(1.15) rotate(${spin / 2}deg)`,
+          opacity: 1,
+          offset: 0.2,
+        },
+        {
+          transform: `translate(${-sway * 0.3}px, ${-h * 0.6}px) scale(1) rotate(${-spin / 2}deg)`,
+          opacity: 1,
+          offset: 0.6,
+        },
+        {
+          transform: `translate(${sway}px, ${-h * 1.1}px) scale(0.9) rotate(${spin}deg)`,
+          opacity: 0,
+        },
+      ],
+      {
+        duration: 2200 + Math.random() * 1600,
+        delay: 500 + Math.random() * (800 + count * 18),
+        easing: "cubic-bezier(.25,.6,.4,1)",
+        fill: "both",
+      },
+    );
+  }
+  const done = Promise.all(
+    layer.getAnimations({ subtree: true }).map((a) => a.finished),
+  );
+  done.then(
+    () => layer.remove(),
+    () => layer.remove(),
+  );
+  return () => layer.remove();
+}
 function routeOf(path: string) {
   const id = path.match(/^\/g\/([0-9a-f]{32})$/)?.[1];
   return { id, invalid: path.startsWith("/g/") && !id };
@@ -140,6 +197,15 @@ function App() {
     return () => animations.forEach((a) => a.cancel());
   }, [animate, g?.id]);
   const inResult = !!route.id || route.invalid;
+  useEffect(() => {
+    if (
+      !inResult ||
+      !g ||
+      matchMedia("(prefers-reduced-motion: reduce)").matches
+    )
+      return;
+    return burst(g.rarity);
+  }, [inResult, g?.id]);
   const url = g ? new URL(`/g/${g.id}`, location.origin).href : "";
   const hits = g
     ? [
@@ -150,7 +216,10 @@ function App() {
     : [];
   return (
     <main className="desktop">
-      <div className={`window ${inResult ? "result" : "home"}`}>
+      <div
+        key={inResult ? (g?.id ?? "result") : "home"}
+        className={`window ${inResult ? "result" : "home"} ${inResult && g ? "bounce-in" : ""}`}
+      >
         <div className="title-bar">
           <div className="title-bar-text">
             {inResult && g ? `${g.reading.display} - ` : ""}架空漢字ガチャ
@@ -170,7 +239,7 @@ function App() {
             <>
               {g ? (
                 <>
-                  <figure className="canvas sunken" ref={card}>
+                  <figure className="canvas sunken rubber-band" ref={card}>
                     <div
                       className="glyph"
                       role="img"
