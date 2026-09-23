@@ -290,7 +290,7 @@ function App() {
                 </p>
               )}
               <button type="button" className="again" onClick={() => go("/")}>
-                もう一度回す
+                戻る
               </button>
             </>
           ) : (
@@ -298,7 +298,7 @@ function App() {
               <h1>架空漢字ガチャ</h1>
               <form onSubmit={roll} noValidate>
                 <menu role="tablist" aria-label="読みの種類">
-                  {(["on", "kun"] as const).map((m) => (
+                  {(["kun", "on"] as const).map((m) => (
                     <li key={m} role="tab" aria-selected={mode === m}>
                       <a
                         href="#"
