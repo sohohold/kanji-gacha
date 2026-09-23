@@ -59,4 +59,4 @@ jobs:
           GENERATION_ENABLED: ${{ vars.GENERATION_ENABLED || 'true' }}
         run: |
           scripts/deploy.sh
-          echo "base_url=$(terraform -chdir=infra output -json | jq -r '.base_url.value // empty')" >> "$GITHUB_OUTPUT"
+          echo "base_url=$(terraform -chdir=infra output -json | jq -r '.configured_base_url.value // empty')" >> "$GITHUB_OUTPUT"

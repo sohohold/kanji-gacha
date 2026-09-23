@@ -103,7 +103,7 @@ cd ../..
 3. コミットSHAをタグにarm64イメージを `--provenance=false` でbuild/pushする。タグは上書き不可なので、同じコミットの再実行では既存のイメージを再利用する。
 4. pushしたdigestのイメージを取り出し、その中の `/app/web` を静的ファイルとして使う。共有HTMLはLambdaがイメージ内の `index.html` から返すため、手元の `web/dist` を使うとハッシュ付きファイル名が食い違います。
 5. ハッシュ付きアセットを先にS3へ追加する（1年・immutable）。旧版のアセットは削除しません。キャッシュされた旧HTMLが参照し続けるためです。
-6. digestを指定して `plan -out` し、削除・置換を含むplanなら中止してからそのplanをapplyする。`base_url` はstateの値（初回はCloudFrontのドメイン）か `vars.BASE_URL` を必ず渡し、既定値のlocalhostへ戻しません。
+6. digestを指定して `plan -out` し、削除・置換を含むplanなら中止してからそのplanをapplyする。`base_url` はLambdaに設定済みの値（出力 `configured_base_url`。初回はCloudFrontのドメイン）か `vars.BASE_URL` を必ず渡し、既定値のlocalhostへ戻しません。
 7. `kanji-ui.otf` と `index.html`（`no-cache`）をアップロードし、`index.html` が参照する実体がS3にあるか確認する。
 8. CloudFrontの `/` `/index.html` `/g/*` `/kanji-ui.otf` を無効化し、完了を待つ。
 9. CloudFront経由でトップ・アセット・フォント・API（不正IDで400）・共有ページ（存在しないIDで404のSPA）を確認し、Function URLへの直接呼び出しが403になることを確認する。生成（POST）はしないので、確認のたびに結果が保存されることはありません。
@@ -118,7 +118,7 @@ Dockerfileのweb・Goのステージはビルドマシンの環境で動き、Go
 terraform -chdir=infra output   # release, base_url を確認
 IMAGE=$(aws lambda get-function --function-name kanji-gacha --query 'Code.ImageUri' --output text)
 terraform -chdir=infra plan -out=manual.tfplan -var "image_uri=$IMAGE" \
-  -var "base_url=$(terraform -chdir=infra output -raw base_url)" \
+  -var "base_url=$(terraform -chdir=infra output -raw configured_base_url)" \
   -var "release=$(terraform -chdir=infra output -raw release)"
 terraform -chdir=infra apply manual.tfplan
 ```

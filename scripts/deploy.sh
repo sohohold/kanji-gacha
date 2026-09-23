@@ -57,8 +57,10 @@ if [[ -n $deployed && $deployed != "$RELEASE" ]]; then
 fi
 
 # First deploy: create ECR and the buckets before there is an image to run.
+# release stays unset until an image is live, so a failure after this step
+# does not make older commits look superseded.
 if [[ -z $(output repository_url) ]]; then
-  plan_apply -var image_uri= -var "release=$RELEASE"
+  plan_apply -var image_uri=
 fi
 repo=$(output repository_url)
 spa_bucket=$(output spa_bucket)
@@ -91,8 +93,14 @@ docker rm "$cid" >/dev/null
 aws s3 sync release-web/assets "s3://$spa_bucket/assets/" --size-only \
   --cache-control 'public,max-age=31536000,immutable'
 
+# Keep the URL the Lambda already has (a custom domain stays). Only the first
+# deploy's first apply leaves the localhost default, which the CloudFront
+# domain then replaces.
 if [[ -z $BASE_URL ]]; then
-  BASE_URL=$(output base_url)
+  BASE_URL=$(output configured_base_url)
+  if [[ $BASE_URL == http://localhost* ]]; then
+    BASE_URL=$(output base_url)
+  fi
 fi
 args=(-var "image_uri=$image" -var "release=$RELEASE" -var "generation_enabled=$GENERATION_ENABLED")
 if [[ -n $BASE_URL ]]; then

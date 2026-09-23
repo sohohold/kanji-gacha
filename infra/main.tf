@@ -240,6 +240,9 @@ output "repository_url" { value = aws_ecr_repository.app.repository_url }
 output "spa_bucket" { value = aws_s3_bucket.spa.id }
 output "results_bucket" { value = aws_s3_bucket.results.id }
 output "base_url" { value = local.deploy ? "https://${aws_cloudfront_distribution.app[0].domain_name}" : null }
+# The BASE_URL the Lambda was given, which differs from base_url once a custom
+# domain is set. The deploy script keeps it when no URL is passed.
+output "configured_base_url" { value = local.deploy ? var.base_url : null }
 output "distribution_id" { value = local.deploy ? aws_cloudfront_distribution.app[0].id : null }
 output "release" { value = var.release }
 output "function_url" { value = local.deploy ? aws_lambda_function_url.app[0].function_url : null }
