@@ -16,14 +16,6 @@ spec 3.7 は「IDSや画数が確定しない素材は該当値を null」とす
 
 スキーマに合わせる場合は、spec 3.7 を「IDS を持たない素材は字そのものを入れる」と改める。コードの変更は要らない。
 
-### 1.2 `/g/{不正ID}`・`/g/{存在しないID}` の応答本文
-
-`/g/{id}` の `share` は、ID が不正なら 400、存在しなければ 404 を problem+json で返す。ブラウザにはその JSON がそのまま表示され、SPA は読み込まれない。そのため `web/src/main.tsx` の `invalidRoute` 分岐と 404 の文言は現状では到達しないコードになっている。CloudFront の `custom_error_response` は代替ページを指定していないので、この JSON は利用者までそのまま届く。
-
-修正案は、ステータス（400/404/503）を維持したまま本文を SPA の `index.html`（OGP タグなし、`Cache-Control: no-store`）にするものである。SPA は `routeId` があれば `/api/v1/glyphs/{id}` を叩き直すので、そこで problem+json を受けて `message()` の文言が出る。
-
-ただしこれは二つの仕様と衝突する。`api/openapi.yaml` は `/g/{id}` の `default` を Problem と定義している。また e2e の `web/e2e/app.spec.ts` の `unknown share link has an error` は本文に `Not Found`（problem+json の `title`）が含まれることを検査しており、現在の JSON 素通しを固定している。採用する場合は、OpenAPI に `/g/{id}` の 400/404 を `text/html` として追記し、e2e の期待値を SPA の表示文言（「生成結果が見つかりませんでした。」など）に改める必要がある。
-
 ## 2. 本番環境での実測が必要なもの
 
 いずれもローカルの Go テストや MinIO では確かめられない。デプロイ後に CloudFront 経由で確認する。

@@ -117,6 +117,47 @@ func TestErrors(t *testing.T) {
 	}
 }
 
+// A share link is opened in a browser, so one that cannot be served answers
+// with the SPA, which explains the failure, rather than raw problem+json. The
+// status is kept, and the page is neither cached nor carries OGP tags.
+func TestShareErrorServesSPA(t *testing.T) {
+	s := setup(t)
+	id := strings.Repeat("a", 32)
+	for _, c := range []struct {
+		path   string
+		status int
+		store  store.Store
+	}{
+		{"/g/no", 400, nil},
+		{"/g/" + id, 404, nil},
+		{"/g/" + id + "/", 404, nil},
+		{"/g/", 404, nil},
+		{"/g/" + id, 503, broken{}},
+	} {
+		if c.store != nil {
+			s.Store = c.store
+		}
+		w := call(s, "GET", c.path, "")
+		if w.Code != c.status {
+			t.Errorf("%s: status %d, want %d", c.path, w.Code, c.status)
+		}
+		if ct := w.Header().Get("Content-Type"); ct != "text/html; charset=utf-8" {
+			t.Errorf("%s: content type %q", c.path, ct)
+		}
+		if cc := w.Header().Get("Cache-Control"); cc != "no-store" {
+			t.Errorf("%s: cache control %q", c.path, cc)
+		}
+		if b := w.Body.String(); !bytes.Equal(w.Body.Bytes(), s.index) || strings.Contains(b, "og:") {
+			t.Errorf("%s: body %q", c.path, b)
+		}
+	}
+	// The API keeps answering the same failures with problem+json.
+	w := call(s, "GET", "/api/v1/glyphs/"+id, "")
+	if w.Code != 503 || w.Header().Get("Content-Type") != "application/problem+json" {
+		t.Errorf("api: %d %q", w.Code, w.Header().Get("Content-Type"))
+	}
+}
+
 // conflictStore simulates the loser of a concurrent first OGP request: the
 // conditional PUT is rejected, and the winner's object only becomes readable
 // after misses (or never, when readErr is set to a real failure).

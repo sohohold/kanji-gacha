@@ -59,6 +59,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/glyphs", s.generate)
 	mux.HandleFunc("GET /api/v1/glyphs/{id}", s.get)
 	mux.HandleFunc("GET /g/{id}", s.share)
+	// A share path of any other shape, such as one given a trailing slash, is
+	// still a link someone opened; the SPA tells them to check it.
+	mux.HandleFunc("GET /g/{rest...}", func(w http.ResponseWriter, r *http.Request) { s.shareError(w, 404) })
 	mux.HandleFunc("GET /og/{image}", s.og)
 	mux.Handle("GET /assets/", http.FileServer(http.Dir(s.WebDir)))
 	mux.HandleFunc("GET /kanji-ui.otf", func(w http.ResponseWriter, r *http.Request) {
@@ -276,30 +279,31 @@ func sharedReading(s string) string {
 	}
 	return s
 }
-func (s *Server) load(w http.ResponseWriter, r *http.Request, id string) (model.Glyph, []byte, bool) {
+
+// load reads a saved glyph. On failure it returns the status and problem code
+// to report, leaving the response to the caller: the API answers with
+// problem+json, while the share page answers with the SPA.
+func (s *Server) load(ctx context.Context, id string) (model.Glyph, []byte, int, string) {
 	var g model.Glyph
 	if !glyphid.Valid(id) {
-		problem(w, 400, "invalid_id", nil)
-		return g, nil, false
+		return g, nil, 400, "invalid_id"
 	}
-	b, e := s.Store.Get(r.Context(), "glyphs/"+id+".json")
+	b, e := s.Store.Get(ctx, "glyphs/"+id+".json")
 	if e != nil {
 		if errors.Is(e, store.ErrNotFound) {
-			problem(w, 404, "not_found", nil)
-		} else {
-			problem(w, 503, "storage_unavailable", nil)
+			return g, nil, 404, "not_found"
 		}
-		return g, nil, false
+		return g, nil, 503, "storage_unavailable"
 	}
 	if json.Unmarshal(b, &g) != nil || g.ID != id || g.SchemaVersion != 1 {
-		problem(w, 503, "invalid_record", nil)
-		return g, nil, false
+		return g, nil, 503, "invalid_record"
 	}
-	return g, b, true
+	return g, b, 0, ""
 }
 func (s *Server) get(w http.ResponseWriter, r *http.Request) {
-	_, b, ok := s.load(w, r, r.PathValue("id"))
-	if !ok {
+	_, b, status, code := s.load(r.Context(), r.PathValue("id"))
+	if status != 0 {
+		problem(w, status, code, nil)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -307,8 +311,9 @@ func (s *Server) get(w http.ResponseWriter, r *http.Request) {
 	w.Write(b)
 }
 func (s *Server) share(w http.ResponseWriter, r *http.Request) {
-	g, _, ok := s.load(w, r, r.PathValue("id"))
-	if !ok {
+	g, _, status, _ := s.load(r.Context(), r.PathValue("id"))
+	if status != 0 {
+		s.shareError(w, status)
 		return
 	}
 	escape := html.EscapeString
@@ -320,6 +325,18 @@ func (s *Server) share(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=86400")
 	w.Write([]byte(page))
+}
+
+// shareError answers a share link that cannot be served with the SPA, keeping
+// the status. People open these links in a browser, so problem+json would be
+// shown to them as raw text; the SPA instead reads the path, asks the API for
+// the glyph and shows the error in its own words. The page carries no OGP tags
+// and is not cached, so a link that starts working is not held back.
+func (s *Server) shareError(w http.ResponseWriter, status int) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	w.Write(s.index)
 }
 
 // rereadAfterConflict fetches the object whose conditional PUT won the race.
@@ -363,8 +380,9 @@ func (s *Server) og(w http.ResponseWriter, r *http.Request) {
 	key := "og/" + id + ".png"
 	b, e := s.Store.Get(ctx, key)
 	if errors.Is(e, store.ErrNotFound) {
-		g, _, ok := s.load(w, r, id)
-		if !ok {
+		g, _, status, code := s.load(ctx, id)
+		if status != 0 {
+			problem(w, status, code, nil)
 			return
 		}
 		rctx, rcancel := context.WithTimeout(ctx, 3*time.Second)
