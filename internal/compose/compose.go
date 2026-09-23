@@ -265,7 +265,10 @@ func (e *Engine) attempt(ph candidate, count, depth int, rng *rand.Rand, cores i
 	cores = max(1, min(cores, count, 4))
 	coreDepth := map[int]int{1: 0, 2: 1, 3: 2, 4: 2}
 	// 意符1つごとに深さが1増えるので、深さが足りないときは音符の重ねを増やして選んだ部品数を保つ。
-	for cores < min(count, 4) && cores+depth-coreDepth[cores] < count {
+	for cores > 1 && coreDepth[cores] > depth {
+		cores--
+	}
+	for cores < min(count, 4) && coreDepth[cores+1] <= depth && cores+depth-coreDepth[cores] < count {
 		cores++
 	}
 	wraps := min(count-cores, depth-coreDepth[cores])

@@ -213,6 +213,32 @@ func TestRarityPartCountsReachable(t *testing.T) {
 	}
 }
 
+// config.MaxReachableParts must match what attempt can actually build, so a
+// configuration that passes validation never truncates its part counts.
+func TestMaxReachablePartsMatchesGenerator(t *testing.T) {
+	e := testEngine(t)
+	r, _ := kana.Validate(kana.Input{Mode: "on", Reading: "セイ"})
+	ph := e.rank(r.Morae, r.Mode, r.Okurigana)[0]
+	e.Config.MaxStrokes = 512
+	rng := rand.New(rand.NewChaCha8([32]byte{5}))
+	for depth := 1; depth <= 10; depth++ {
+		n := config.MaxReachableParts(depth)
+		for _, cores := range []int{1, 2, 3, 4} {
+			res, err := e.attempt(ph, n, depth, rng, cores)
+			if err != nil {
+				continue
+			}
+			if len(res.components) != n {
+				t.Errorf("depth=%d cores=%d: got %d of %d parts", depth, cores, len(res.components), n)
+			}
+		}
+		// One more part than the limit must not be buildable.
+		if res, err := e.attempt(ph, n+1, depth, rng, 4); err == nil && len(res.components) > n {
+			t.Errorf("depth=%d: built %d parts beyond the limit %d", depth, len(res.components), n)
+		}
+	}
+}
+
 func TestRadicalFramesHaveInnerBoxes(t *testing.T) {
 	e := testEngine(t)
 	frames := 0

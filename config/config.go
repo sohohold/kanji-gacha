@@ -40,6 +40,16 @@ type Config struct {
 	Rarities    []Rarity `json:"rarities"`
 }
 
+// MaxReachableParts is the largest part count the generator can build within a
+// tree depth: each radical adds one level around the phonetic core, and the core
+// holds at most four copies in two levels (internal/compose attempt).
+func MaxReachableParts(depth int) int {
+	if depth <= 1 {
+		return 2
+	}
+	return depth + 2
+}
+
 func Load(path string) (Config, error) {
 	b := defaults
 	var err error
@@ -60,7 +70,7 @@ func Load(path string) (Config, error) {
 	names := map[string]bool{"N": true, "R": true, "SR": true, "SSR": true, "UR": true}
 	total := 0
 	for _, r := range c.Rarities {
-		if !names[r.Name] || r.Weight <= 0 || r.MinParts < 1 || r.MaxParts < r.MinParts || r.MaxParts > c.MaxParts || r.MaxDepth < 1 || r.MaxDepth > c.MaxDepth || r.MaxParts > 1<<r.MaxDepth || r.Temperature <= 0 {
+		if !names[r.Name] || r.Weight <= 0 || r.MinParts < 1 || r.MaxParts < r.MinParts || r.MaxParts > c.MaxParts || r.MaxDepth < 1 || r.MaxDepth > c.MaxDepth || r.MaxParts > MaxReachableParts(r.MaxDepth) || r.Temperature <= 0 {
 			return c, fmt.Errorf("invalid rarity %s", r.Name)
 		}
 		total += r.Weight
