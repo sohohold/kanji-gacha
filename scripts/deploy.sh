@@ -115,9 +115,14 @@ while [[ $BASE_URL == */ ]]; do BASE_URL=${BASE_URL%/}; done
 # serve (no alias and certificate for it) would publish links that cannot
 # load, so refuse it before anything is applied.
 if [[ -n $BASE_URL ]]; then
+  # CloudFront redirects HTTP and routes /g/* and /api/* from the root, so a
+  # scheme other than https or a path prefix would publish broken links.
+  if [[ ! $BASE_URL =~ ^https://[A-Za-z0-9.-]+$ ]]; then
+    echo "::error::BASE_URL must be https:// followed by a host only, without a path, port or query: $BASE_URL" >&2
+    exit 1
+  fi
   distribution=$(output distribution_id)
-  host=${BASE_URL#*://}
-  host=${host%%/*}
+  host=${BASE_URL#https://}
   if [[ -z $distribution ]] || ! aws cloudfront get-distribution --id "$distribution" \
     --query 'Distribution.[DomainName, DistributionConfig.Aliases.Items]' --output text |
     tr '\t' '\n' | grep -xF "$host" >/dev/null; then
