@@ -120,7 +120,23 @@ terraform -chdir=infra apply manual.tfplan
 
 新規生成を止めるには、リポジトリ変数 `GENERATION_ENABLED` を `false` にして `Deploy` を手動実行します（同じコミットの再デプロイになります）。POSTは503を返し、保存済み結果の閲覧は続きます。変数を戻して再実行すると再開します。手元からapplyして切り替えた場合も、次のデプロイで変数の値に戻る点に注意してください。
 
-AWS Budgetsは、アカウント全体の実コストが月 `budget_limit_usd`（既定1 USD）を超えたときに `budget_emails` へメールします。通知するだけで、何も止めません。アプリだけを対象にするにはコスト配分タグの設計が必要で、今は未対応です。
+AWS Budgetsは、アカウント全体の実コストが月 `budget_limit_usd`（既定1 USD）を超えたときに `budget_emails` へメールします。通知するだけで、何も止めません。アプリ分だけを対象にしたい場合は、下のタグを使ってフィルタを追加してください。
+
+## タグ
+
+両構成の `provider "aws"` に `default_tags` を置き、タグを持てるリソースすべてに次を付けます。
+
+| キー | 値 |
+| --- | --- |
+| `Project` | `kanji-gacha` |
+| `Component` | `app`（`infra`）／ `bootstrap`（`infra/bootstrap`） |
+| `ManagedBy` | `terraform` |
+
+タグを条件にしたポリシーは書いていないので、タグは分類のためだけのものです。ただしデプロイロールには、タグを書き換えるための `iam:TagRole`・`*:UntagResource` 等を追加しています。`iam:TagRole` はCreateRole時に権限境界の条件が付かない経路でも必要になるため、境界条件のない別ステートメントにしてあります。
+
+コスト配分に使うには、Billing and Cost Management → Cost allocation tags で `Project` を有効化します。`Component` も分けたいなら同様に有効化します。一覧にはタグの付いた課金対象リソースが検出されてから現れるので、applyの直後には出ません（最大24時間）。有効化した日以降のコストだけが対象で、遡るには同画面の「タグのバックフィル」を使います。
+
+このアプリのリソースをまとめて見るには、Resource Groups & Tag Editor で `Project` = `kanji-gacha` のタグベースのグループ（Resource types は `AWS::AllSupported`）を作ります。追加料金はありません。タグが付いていないものも含めてアカウント全体を見るには AWS Resource Explorer（追加料金なし、要有効化）を使います。AWS Configは構成項目ごとの課金があるため使っていません。
 
 ## 監視（CloudWatch埋め込みメトリクス）
 

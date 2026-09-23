@@ -8,7 +8,16 @@ terraform {
     aws = { source = "hashicorp/aws", version = "~> 6.0" }
   }
 }
-provider "aws" { region = var.region }
+provider "aws" {
+  region = var.region
+  default_tags {
+    tags = {
+      Project   = var.name
+      Component = "bootstrap"
+      ManagedBy = "terraform"
+    }
+  }
+}
 variable "region" { default = "ap-northeast-1" }
 variable "name" { default = "kanji-gacha" }
 variable "github_repository" { default = "sohohold/kanji-gacha" }
@@ -142,7 +151,7 @@ resource "aws_iam_role_policy" "deploy" {
     { Sid = "EcrRepository", Effect = "Allow", Resource = local.app.ecr, Action = [
       "ecr:CreateRepository", "ecr:DescribeRepositories", "ecr:ListTagsForResource", "ecr:TagResource",
       "ecr:GetRepositoryPolicy", "ecr:SetRepositoryPolicy", "ecr:GetLifecyclePolicy", "ecr:PutLifecyclePolicy",
-      "ecr:PutImageTagMutability", "ecr:PutImageScanningConfiguration",
+      "ecr:UntagResource", "ecr:PutImageTagMutability", "ecr:PutImageScanningConfiguration",
       "ecr:DescribeImages", "ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:BatchCheckLayerAvailability",
       "ecr:InitiateLayerUpload", "ecr:UploadLayerPart", "ecr:CompleteLayerUpload", "ecr:PutImage"
     ] },
@@ -161,26 +170,32 @@ resource "aws_iam_role_policy" "deploy" {
     { Sid    = "LambdaRoleWriteWithinBoundary", Effect = "Allow", Resource = local.app.lambda_role,
       Action = ["iam:CreateRole", "iam:PutRolePolicy", "iam:DeleteRolePolicy", "iam:PutRolePermissionsBoundary"],
     Condition = { StringEquals = { "iam:PermissionsBoundary" = aws_iam_policy.lambda_boundary.arn } } },
+    # default_tags reaches the Lambda role too. CreateRole carries the boundary
+    # condition, but tagging an existing role does not, so it needs its own
+    # statement. Tags grant nothing here; no policy keys off them.
+    { Sid = "LambdaRoleTags", Effect = "Allow", Resource = local.app.lambda_role, Action = [
+      "iam:TagRole", "iam:UntagRole", "iam:ListRoleTags"
+    ] },
     { Sid = "LambdaRolePass", Effect = "Allow", Action = "iam:PassRole", Resource = local.app.lambda_role,
     Condition = { StringEquals = { "iam:PassedToService" = "lambda.amazonaws.com" } } },
 
     { Sid = "LambdaFunction", Effect = "Allow", Resource = [local.app.function, "${local.app.function}:*"], Action = [
       "lambda:Get*", "lambda:List*", "lambda:CreateFunction", "lambda:UpdateFunctionCode", "lambda:UpdateFunctionConfiguration",
-      "lambda:PutFunctionConcurrency", "lambda:DeleteFunctionConcurrency", "lambda:TagResource",
+      "lambda:PutFunctionConcurrency", "lambda:DeleteFunctionConcurrency", "lambda:TagResource", "lambda:UntagResource",
       "lambda:AddPermission", "lambda:RemovePermission",
       "lambda:CreateFunctionUrlConfig", "lambda:UpdateFunctionUrlConfig"
     ] },
 
     { Sid = "LogGroupList", Effect = "Allow", Action = "logs:DescribeLogGroups", Resource = "*" },
     { Sid = "LogGroup", Effect = "Allow", Resource = [local.app.log_group, "${local.app.log_group}:*"], Action = [
-      "logs:CreateLogGroup", "logs:PutRetentionPolicy", "logs:ListTagsForResource", "logs:ListTagsLogGroup", "logs:TagResource"
+      "logs:CreateLogGroup", "logs:PutRetentionPolicy", "logs:ListTagsForResource", "logs:ListTagsLogGroup", "logs:TagResource", "logs:UntagResource"
     ] },
 
     # CloudFront IDs are assigned on creation, so these cannot be scoped by ARN.
     # Deletes are not granted.
     { Sid = "CloudFront", Effect = "Allow", Resource = "*", Action = [
       "cloudfront:Get*", "cloudfront:List*",
-      "cloudfront:CreateDistribution", "cloudfront:UpdateDistribution", "cloudfront:TagResource",
+      "cloudfront:CreateDistribution", "cloudfront:UpdateDistribution", "cloudfront:TagResource", "cloudfront:UntagResource",
       "cloudfront:CreateCachePolicy", "cloudfront:UpdateCachePolicy",
       "cloudfront:CreateOriginRequestPolicy", "cloudfront:UpdateOriginRequestPolicy",
       "cloudfront:CreateOriginAccessControl", "cloudfront:UpdateOriginAccessControl",

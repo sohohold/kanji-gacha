@@ -4,7 +4,18 @@ terraform {
     aws = { source = "hashicorp/aws", version = "~> 6.0" }
   }
 }
-provider "aws" { region = var.region }
+# Tags on every resource that supports them. Project is the cost allocation key
+# (activate it in Billing once); Component separates this from infra/bootstrap.
+provider "aws" {
+  region = var.region
+  default_tags {
+    tags = {
+      Project   = var.name
+      Component = "app"
+      ManagedBy = "terraform"
+    }
+  }
+}
 variable "region" { default = "ap-northeast-1" }
 variable "name" { default = "kanji-gacha" }
 variable "image_uri" {
