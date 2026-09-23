@@ -21,8 +21,6 @@ font.save(root / 'internal/render/assets/NotoSansJP.otf')
 font = TTFont(sys.argv[1])
 dictionary = json.loads(gzip.decompress((root / 'internal/dict/dictionary.json.gz').read_bytes()))
 codes.update(range(0x2FF0, 0x3000))
-# Records saved before the Biang slot was removed still show U+30EDE as their ids.
-codes.add(0x30EDE)
 for part in dictionary['Parts']:
     codes.update(ord(c) for c in part['Char'])
 sub = subset.Subsetter(options=opts)
