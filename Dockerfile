@@ -25,8 +25,8 @@ COPY --from=adapter /lambda-adapter /opt/extensions/lambda-adapter
 COPY --from=go /api /app/api
 COPY --from=web /src/web/dist /app/web
 # Lambda ignores USER and runs as its own uid, but still changes into WORKDIR.
-# The base image's /home/nonroot is 0700 for uid 65532, so the start would
-# fail there; /app is readable by any user.
+# The base image's /home/nonroot is 0700 for uid 65532, so starting there
+# fails with Runtime.InvalidEntrypoint; /app is readable by any user.
 WORKDIR /app
 ENV PORT=8080 WEB_DIR=/app/web DATA_DIR=/tmp/data AWS_LWA_READINESS_CHECK_PATH=/healthz
 EXPOSE 8080
