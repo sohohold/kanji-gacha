@@ -151,8 +151,10 @@ resource "aws_cloudfront_origin_request_policy" "api" {
   headers_config {
     header_behavior = "whitelist"
     # CloudFront-Viewer-Address is the rate-limit key; the cache policy must not
-    # include it or the cache would split per viewer.
-    headers { items = ["Content-Type", "x-amz-content-sha256", "CloudFront-Viewer-Address"] }
+    # include it or the cache would split per viewer. x-amz-content-sha256 is
+    # not listed: CloudFront rejects it here, and OAC signs with the viewer's
+    # value on its own.
+    headers { items = ["Content-Type", "CloudFront-Viewer-Address"] }
   }
 }
 resource "aws_cloudfront_distribution" "app" {

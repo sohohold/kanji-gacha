@@ -334,7 +334,7 @@ flowchart LR
 
 Lambda のオリジンには Function URL を使い、CloudFront の OAC で署名付きアクセスに限定する。API Gateway は使わないので、その分の課金とレイテンシがなくなる。サーバーは通常の `net/http` サーバーとして書き、AWS Lambda Web Adapter で Lambda に載せる。これで、ローカルの Docker でも Lambda でも同じバイナリがそのまま動く。
 
-OAC は [AWS公式手順](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-lambda.html) に従い、Function URL は `AWS_IAM`、OACは常時署名、Lambda権限は対象distributionのARNに限定する。必要な `lambda:InvokeFunctionUrl` と `lambda:InvokeFunction` を設定する。フロントはJSONを一度だけ文字列化し、そのUTF-8バイト列のSHA-256を小文字16進数にして `x-amz-content-sha256` に入れ、同じバイト列をPOSTする。CloudFrontはこのヘッダーをオリジンへ転送し、POSTを許可、`/api/*` の生成応答をキャッシュしない。本文とハッシュが異なる場合の拒否も実AWSの結合確認に含める。GETのキャッシュ設定とは分ける。
+OAC は [AWS公式手順](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-lambda.html) に従い、Function URL は `AWS_IAM`、OACは常時署名、Lambda権限は対象distributionのARNに限定する。必要な `lambda:InvokeFunctionUrl` と `lambda:InvokeFunction` を設定する。フロントはJSONを一度だけ文字列化し、そのUTF-8バイト列のSHA-256を小文字16進数にして `x-amz-content-sha256` に入れ、同じバイト列をPOSTする。CloudFrontはOACの署名にこのヘッダーの値を使う（origin request policyには指定できないため入れない）。POSTを許可、`/api/*` の生成応答をキャッシュしない。本文とハッシュが異なる場合の拒否も実AWSの結合確認に含める。GETのキャッシュ設定とは分ける。
 
 ### 7.1 Docker の位置づけ
 
