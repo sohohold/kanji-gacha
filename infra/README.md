@@ -2,7 +2,7 @@
 
 Terraformは2つの構成に分かれています。`infra/bootstrap` はアカウント単位で一度だけ人の認証で適用するもので、Terraform stateのS3バケット、GitHub ActionsのOIDCデプロイロール、Lambda実行ロールの権限境界、AWS Budgetsの通知を作ります。`infra` はアプリ本体で、ECR、非公開S3、Lambda arm64、Function URL（AWS_IAM）、OAC、CloudFront、ロググループを定義します。顧客VPC・NAT Gatewayは作りません。アプリ本体は通常 `.github/workflows/deploy.yml` が `scripts/deploy.sh` を通して適用します。
 
-この実装作業ではどちらの構成もapplyしていません。以下の操作は実際にAWSリソースと費用を発生させるので、対象アカウントとplanを確認してから実行してください。
+`infra/bootstrap` は2026-09-23にアカウント `473536070013` へapply済みで、stateはS3にあります。`infra`（アプリ本体）はまだapplyしていません。以下の操作は実際にAWSリソースと費用を発生させるので、対象アカウントとplanを確認してから実行してください。
 
 ## 実行前のAWS認証
 
@@ -21,6 +21,12 @@ aws sts get-caller-identity
 SSOを使う場合は `aws configure sso --profile kanji-gacha`（初回のみ）と `aws sso login --profile kanji-gacha` で、既存のアクセスキーを使う場合は `aws configure --profile kanji-gacha` で同じプロファイルを用意します。一時認証情報を環境変数で渡す場合は `AWS_SESSION_TOKEN` も必要です。認証情報を `.tf`・`.tfvars` やGitに保存しないでください。
 
 `No valid credential sources found` と `no EC2 IMDS role found` が出る場合、利用可能な認証情報が見つからず、EC2のインスタンスメタデータへの問い合わせも失敗しています。上記の認証設定を確認してください。`AWS_EC2_METADATA_DISABLED=true` だけを設定しても認証情報は補えません。
+
+`aws` コマンドと `terraform plan` は通るのに `terraform init` のS3バックエンドだけが同じエラーで失敗することがあります。Terraform 1.11.4同梱のS3バックエンドは、AWS Providerより古いSDKを使っていて `aws login` のプロファイルを解決できないためです。一時認証情報を環境変数へ展開してから実行してください。
+
+```bash
+eval "$(aws configure export-credentials --profile kanji-gacha --format env)"
+```
 
 参考：[AWS CLIのブラウザ認証](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sign-in.html)、[AWS Providerの認証設定](https://registry.terraform.io/providers/hashicorp/aws/latest/docs#authentication-and-configuration)。
 
@@ -53,6 +59,7 @@ terraform init
 terraform plan    # state バケット、OIDC Provider、デプロイロール、権限境界、Budget を確認
 terraform apply
 rm local_override.tf
+eval "$(aws configure export-credentials --profile kanji-gacha --format env)"   # バックエンド用
 terraform init -migrate-state   # ローカルstateをS3へコピーするか聞かれたら yes
 terraform plan                  # S3のstateで差分が出ないことを確認
 rm terraform.tfstate terraform.tfstate.backup
@@ -165,4 +172,4 @@ Lambda実行ロールは権限境界 `kanji-gacha-lambda-boundary` を付けた�
 
 ## 未確認の事項
 
-bootstrapとアプリ構成のapply、OIDCでのロール引受、Actions経由のデプロイ、Budgetsの通知、CloudWatchでのメトリクス抽出は、まだAWS上で確認していません。デプロイロールの権限はTerraformとAWS CLIが呼ぶAPIから設計したもので、初回のデプロイで不足が見つかった場合は `AccessDenied` のアクションを追加してください。公開前に、CloudFront経由のPOST→GET→共有HTML→OGP、POSTの本文ハッシュ有／無・改変時の動作も確認してください。
+bootstrapのapplyは済んでいます（12リソース作成、S3 stateで差分なしを確認）。アプリ構成のapply、OIDCでのロール引受、Actions経由のデプロイ、Budgetsの通知、CloudWatchでのメトリクス抽出は、まだAWS上で確認していません。デプロイロールの権限はTerraformとAWS CLIが呼ぶAPIから設計したもので、初回のデプロイで不足が見つかった場合は `AccessDenied` のアクションを追加してください。公開前に、CloudFront経由のPOST→GET→共有HTML→OGP、POSTの本文ハッシュ有／無・改変時の動作も確認してください。
