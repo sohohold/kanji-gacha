@@ -41,7 +41,7 @@ function routeOf(path: string) {
 }
 function App() {
   const [path, setPath] = useState(location.pathname);
-  const [mode, setMode] = useState<Input["mode"]>("on");
+  const [mode, setMode] = useState<Input["mode"]>("kun");
   const [reading, setReading] = useState("");
   const [okurigana, setOkurigana] = useState("");
   const [composing, setComposing] = useState(false);

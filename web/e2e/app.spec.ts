@@ -4,6 +4,7 @@ test("generate, share, reload the same SVG, and retrieve OGP", async ({
   request,
 }) => {
   await page.goto("/");
+  await page.getByRole("tab", { name: "音読み" }).click();
   await page.getByRole("textbox", { name: "読み", exact: true }).fill("ｷｬ");
   await page.getByRole("button", { name: "ガチャを回す" }).click();
   await expect(page.locator(".canvas figcaption")).toHaveText("キャ");
@@ -29,6 +30,7 @@ test("generate, share, reload the same SVG, and retrieve OGP", async ({
 });
 test("reject invalid input and preserve IME composition", async ({ page }) => {
   await page.goto("/");
+  await page.getByRole("tab", { name: "音読み" }).click();
   const input = page.getByRole("textbox", { name: "読み", exact: true });
   await input.fill("キョャ");
   await page.getByRole("button", { name: "ガチャを回す" }).click();
@@ -48,7 +50,10 @@ test("reject invalid input and preserve IME composition", async ({ page }) => {
 test("kun input on mobile", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  await page.getByRole("tab", { name: "訓読み" }).click();
+  await expect(page.getByRole("tab", { name: "訓読み" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await page
     .getByRole("textbox", { name: "読み（語幹）", exact: true })
     .fill("あお");
