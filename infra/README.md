@@ -74,7 +74,7 @@ cd ../..
 
 リポジトリのSettingsで次を設定します。
 
-- Environments に `production` を作り、Deployment branches を `main` のみに制限する。デプロイロールはこのEnvironmentのジョブだけを信頼するため（OIDCの `sub` が `repo:sohohold/kanji-gacha:environment:production`）、この制限がブランチの制限になります。必要なら Required reviewers も設定できます。
+- Environments に `production` を作り、Deployment branches を `main` のみに制限する。デプロイロールはこのEnvironmentのジョブだけを信頼するため（OIDCの `sub` が `repo:sohohold@94224267/kanji-gacha@1381573804:environment:production`）、この制限がブランチの制限になります。このリポジトリはIDを含むイミュータブルな `sub` で発行されるため、bootstrapの `github_sub_prefix` にはその接頭辞を入れています。リポジトリを移す場合は `gh api repos/OWNER/REPO/actions/oidc/customization/sub` の `sub_claim_prefix` で確かめてください（`use_immutable_subject` が `false` なら `repo:OWNER/REPO`）。必要なら Required reviewers も設定できます。
 - Variables に `AWS_DEPLOY_ROLE_ARN` を追加し、`terraform -chdir=infra/bootstrap output -raw deploy_role_arn` の値を入れる。未設定の間、デプロイワークフローは実行されずにスキップされます。
 - 任意で `GENERATION_ENABLED`（`true`/`false`、既定 `true`）と `BASE_URL` を追加する。`BASE_URL` は独自ドメインへ移すときだけ使い、未設定ならCloudFrontのドメインになります。下の「独自ドメイン」の準備が済むまでは設定しないでください。
 
