@@ -38,9 +38,9 @@ CloudFront の OAC で Lambda Function URL へ POST するときの `x-amz-conte
 
 ## 2. 優先度の低い改善
 
-`infra/main.tf` の `/g/*` と `/og/*` の ordered_cache_behavior は全メソッドを許可している。サーバー側で正しい `Allow` 付きの 405 を返すようにしたので実害はないが、`["GET", "HEAD"]` に絞ればオリジンへの無駄な呼び出しが減る。`/api/*` は POST が要るので現状のままにする。
+`infra/main.tf` の `/g/*` と `/og/*` の ordered_cache_behavior は `["GET", "HEAD"]` に絞った。それ以外のメソッドはオリジンへ届かず、CloudFront が 403 を返す。サーバー側の `Allow` 付き 405 は直接呼び出し用に残している。`/api/*` は POST が要るので全メソッドのままにする。
 
-GitHub Actions で Node 20 の非推奨警告が出ている（`actions/checkout@v4`、`actions/setup-go@v5`、`actions/setup-node@v4`、`pnpm/action-setup@v4`）。現状は Node 24 で強制実行されて通っているが、各アクションの新しいメジャー版へ上げておくとよい。
+GitHub Actions の各アクションは Node 24 で動くメジャー版（`actions/checkout@v7`、`actions/setup-go@v7`、`actions/setup-node@v7`、`pnpm/action-setup@v6`）へ上げた。
 
 特殊枠の素材が実行時に欠けたとき、`Generate` は 503 ではなく通常抽選へ退避するが、ログや計測を出していない。辞書ビルド時の `verifySpecials` が素材の欠落でビルドを失敗させるので、通常は起きない。
 
