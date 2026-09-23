@@ -426,7 +426,7 @@ func (e *Engine) Generate(ctx context.Context, r kana.Reading, now time.Time) (m
 	}
 	// 音符は1回だけ温度付きで抽選し、候補間では形の組み方だけを競わせる。
 	ph := choose(cands, rarity.Temperature, rng)
-	best, err := e.attempt(ph, 1, 1, rng, 1)
+	best, err := e.attempt(ph, 2, 1, rng, 1)
 	if err != nil {
 		return g, err
 	}

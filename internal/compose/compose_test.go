@@ -125,6 +125,30 @@ func TestPhoneticWithRadicals(t *testing.T) {
 	}
 }
 
+// A generation that times out before any worker reports must still return a
+// phonetic with a radical, not a bare existing character.
+func TestFallbackHasRadical(t *testing.T) {
+	e := testEngine(t)
+	r, _ := kana.Validate(kana.Input{Mode: "on", Reading: "セイ"})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	for i := 0; i < 20; i++ {
+		g, err := e.Generate(ctx, r, time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if g.Legend != nil {
+			continue
+		}
+		if !g.Fallback {
+			t.Fatal("expected the fallback candidate with a cancelled context")
+		}
+		if len(g.Components) != 2 || g.Tree.Operator == "" {
+			t.Fatalf("fallback without radical: %s %+v", g.IDS, g.Components)
+		}
+	}
+}
+
 func TestRadicalFramesHaveInnerBoxes(t *testing.T) {
 	e := testEngine(t)
 	frames := 0
