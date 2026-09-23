@@ -84,7 +84,7 @@ GoとTSは `shared/kana-cases.json` の同じ受理／拒否例を検証しま�
 
 ## AWS
 
-[infra/README.md](infra/README.md) に、stateバケット・OIDCデプロイロール・Budgetsを作るbootstrap構成、ECR・Lambda・CloudFront・S3のアプリ構成、GitHub Actionsのデプロイ（`.github/workflows/deploy.yml` と `scripts/deploy.sh`）の手順を記載しています。VPC接続はありません。2026-09-23に両構成を適用し、GitHub Actionsからのデプロイまで動作しています。実環境で残っている確認は同READMEの「未確認の事項」にあります。費用は仕様書7.2の仮定を実測で更新してください。
+[infra/README.md](infra/README.md) に、stateバケット・OIDCデプロイロール・Budgetsを作るbootstrap構成、ECR・Lambda・CloudFront・S3のアプリ構成、GitHub Actionsのデプロイ（`.github/workflows/deploy.yml` と `scripts/deploy.sh`）の手順を記載しています。VPC接続はありません。2026-09-23に両構成を適用し、GitHub Actionsからのデプロイまで動作しています。実環境での確認状況は同READMEの「実環境での確認状況」にあります。費用は仕様書7.2の仮定を実測で更新してください。
 
 残作業：字形の目視調整、NGワード辞書の拡充（現在2語の最小実装）。PGO・夜間fuzz・カバレッジ閾値・静的lintの整備は別途行います。
 
