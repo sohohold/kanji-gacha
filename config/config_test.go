@@ -27,3 +27,22 @@ func TestRejectInvalidRarityDepth(t *testing.T) {
 		}
 	}
 }
+
+func TestRejectUnknownRarityName(t *testing.T) {
+	c, err := Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Rarities[0].Name = "LR"
+	data, err := json.Marshal(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "generator.json")
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Error("accepted rarity name outside the API enum")
+	}
+}

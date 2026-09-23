@@ -45,7 +45,7 @@ const reactions: Record<Glyph["rarity"], [string[], number]> = {
 // 絵文字はウィンドウの周囲（外側に少し広げた範囲）だけで打ち上げる。
 // 書き順の描画が終わるまで出し続け、何が上がったか見届けられるようにする。
 function burst(win: HTMLElement, rarity: Glyph["rarity"], strokes: number) {
-  const [emojis, count] = reactions[rarity];
+  const [emojis, count] = reactions[rarity] ?? reactions.N;
   const emoji = emojis[Math.floor(Math.random() * emojis.length)];
   const layer = document.createElement("div");
   layer.className = "reactions";
