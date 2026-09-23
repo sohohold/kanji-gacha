@@ -1,6 +1,7 @@
 name: Deploy
 # Runs after CI passes on a push to main, so a failing test never deploys.
-# A manual run deploys the head of main without waiting for CI.
+# Every run, including a manual one, deploys the newest commit on main whose CI
+# passed, not necessarily the commit that triggered it: see the target step.
 on:
   workflow_run:
     workflows: [CI]
@@ -9,7 +10,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-# One deploy at a time, and never cancelled halfway through an apply.
+# One deploy at a time, and never cancelled halfway through an apply. GitHub
+# keeps only the latest pending run in a group and cancels the others, which is
+# why each run resolves its own target instead of trusting its trigger.
 concurrency:
   group: deploy-production
   cancel-in-progress: false
@@ -30,14 +33,33 @@ jobs:
       name: production
       url: ${{ steps.deploy.outputs.base_url }}
     permissions:
+      actions: read
       contents: read
       id-token: write
     env:
       TF_IN_AUTOMATION: "1"
     steps:
+      # A pending run for a newer commit can be cancelled by an older one that
+      # arrives later, so deploy the newest tested commit on main rather than
+      # this run's trigger. Commits whose CI failed or did not run are passed
+      # over.
+      - id: target
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tested=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=100" \
+            --jq '.workflow_runs[].head_sha')
+          for sha in $(gh api "repos/$GITHUB_REPOSITORY/commits?sha=main&per_page=100" --jq '.[].sha'); do
+            if grep -qx "$sha" <<<"$tested"; then
+              echo "sha=$sha" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "::error::No recent commit on main has a successful CI run." >&2
+          exit 1
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ steps.target.outputs.sha }}
           # History lets the script tell whether the deployed commit is newer.
           fetch-depth: 0
           persist-credentials: false
@@ -54,7 +76,10 @@ jobs:
       - uses: docker/setup-buildx-action@v4
       - id: deploy
         env:
-          RELEASE: ${{ github.event.workflow_run.head_sha || github.sha }}
+          RELEASE: ${{ steps.target.outputs.sha }}
+          # Several CI completions can resolve to the same commit; only a manual
+          # run redeploys what is already live (e.g. to apply GENERATION_ENABLED).
+          SKIP_IF_DEPLOYED: ${{ github.event_name == 'workflow_run' }}
           BASE_URL: ${{ vars.BASE_URL }}
           GENERATION_ENABLED: ${{ vars.GENERATION_ENABLED || 'true' }}
         run: |

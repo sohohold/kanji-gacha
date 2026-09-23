@@ -9,6 +9,7 @@
 #                       first deploy uses the CloudFront domain once it exists.
 #                       Its host must be the distribution's domain or alias
 #   GENERATION_ENABLED  true/false; pauses new generation when false
+#   SKIP_IF_DEPLOYED    true stops when RELEASE is already the deployed commit
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -49,6 +50,10 @@ tf init -input=false
 # workflow_run events can complete out of order. Refuse to put back a commit
 # that the deployed one already contains; redeploying the same one is allowed.
 deployed=$(output release)
+if [[ ${SKIP_IF_DEPLOYED:-false} == true && $deployed == "$RELEASE" ]]; then
+  echo "::notice::$RELEASE is already deployed; skipping."
+  exit 0
+fi
 if [[ -n $deployed && $deployed != "$RELEASE" ]]; then
   git fetch --quiet origin "$deployed" 2>/dev/null || true
   if git merge-base --is-ancestor "$RELEASE" "$deployed" 2>/dev/null; then
