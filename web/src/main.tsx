@@ -7,7 +7,7 @@ import {
   useQuery,
 } from "@tanstack/react-query";
 import { APIError, generate, getGlyph, type Glyph } from "./api";
-import { normalize, validate, issueMessage, type Input } from "./kana";
+import { validate, issueMessage, type Input } from "./kana";
 import "./style.css";
 const client = new QueryClient({
   defaultOptions: {
@@ -15,23 +15,6 @@ const client = new QueryClient({
     mutations: { retry: false },
   },
 });
-function historyRead(): string[] {
-  try {
-    const xs: unknown = JSON.parse(
-      localStorage.getItem("kanji-history") ?? "[]",
-    );
-    return Array.isArray(xs)
-      ? xs
-          .filter(
-            (s): s is string =>
-              typeof s === "string" && /^[0-9a-f]{32}$/.test(s),
-          )
-          .slice(0, 20)
-      : [];
-  } catch {
-    return [];
-  }
-}
 function message(e: unknown): string {
   if (e instanceof APIError) {
     const p = e.problem;
@@ -51,68 +34,73 @@ function message(e: unknown): string {
   }
   return "接続できませんでした。通信環境をご確認ください。";
 }
+function routeOf(path: string) {
+  const id = path.match(/^\/g\/([0-9a-f]{32})$/)?.[1];
+  return { id, invalid: path.startsWith("/g/") && !id };
+}
 function App() {
+  const [path, setPath] = useState(location.pathname);
   const [mode, setMode] = useState<Input["mode"]>("on");
   const [reading, setReading] = useState("");
   const [okurigana, setOkurigana] = useState("");
   const [composing, setComposing] = useState(false);
   const [touched, setTouched] = useState(false);
-  const [ids, setIds] = useState(historyRead);
-  const [active, setActive] = useState<Glyph>();
   const [notice, setNotice] = useState("");
-  const [replay, setReplay] = useState(0);
+  const [animate, setAnimate] = useState("");
   const [busy, setBusy] = useState(false);
   const card = useRef<HTMLDivElement>(null);
   const composingRef = useRef(false);
-  const routeId = window.location.pathname.match(/^\/g\/([0-9a-f]{32})$/)?.[1];
-  const invalidRoute = window.location.pathname.startsWith("/g/") && !routeId;
+  const route = routeOf(path);
   const saved = useQuery({
-    queryKey: ["glyph", routeId],
-    queryFn: () => getGlyph(routeId!),
-    enabled: !!routeId,
+    queryKey: ["glyph", route.id],
+    queryFn: () => getGlyph(route.id!),
+    enabled: !!route.id,
   });
-  const mutation = useMutation({
-    mutationFn: generate,
-    onSuccess: (g) => {
-      client.setQueryData(["glyph", g.id], g);
-      setActive(g);
-      setReplay(0);
-      setIds((old) => {
-        const next = [g.id, ...old.filter((x) => x !== g.id)].slice(0, 20);
-        try {
-          localStorage.setItem("kanji-history", JSON.stringify(next));
-        } catch {}
-        return next;
-      });
-    },
-  });
-  const g = active ?? saved.data;
+  const mutation = useMutation({ mutationFn: generate });
+  const g = saved.data;
   const input: Input = {
     mode,
     reading,
     okurigana: mode === "kun" ? okurigana : "",
   };
   const issue = !composing ? validate(input) : undefined;
+  function go(next: string) {
+    history.pushState(null, "", next);
+    setPath(next);
+    setNotice("");
+    window.scrollTo(0, 0);
+  }
+  useEffect(() => {
+    const sync = () => {
+      setPath(location.pathname);
+      setNotice("");
+    };
+    addEventListener("popstate", sync);
+    return () => removeEventListener("popstate", sync);
+  }, []);
   async function roll(e: React.FormEvent) {
     e.preventDefault();
     if (composingRef.current || busy) return;
     setTouched(true);
-    setNotice("");
     if (validate(input)) return;
     setBusy(true);
     const start = performance.now();
+    let made: Glyph | undefined;
     try {
-      await mutation.mutateAsync(input);
+      made = await mutation.mutateAsync(input);
     } catch {
     } finally {
       const rest = Math.max(0, 400 - (performance.now() - start));
       await new Promise((r) => setTimeout(r, rest));
       setBusy(false);
     }
+    if (made) {
+      client.setQueryData(["glyph", made.id], made);
+      setAnimate(made.id);
+      go(`/g/${made.id}`);
+    }
   }
-  async function share() {
-    if (!g) return;
-    const url = new URL(`/g/${g.id}`, location.origin).href;
+  async function share(url: string) {
     try {
       if (navigator.share)
         await navigator.share({ title: "架空漢字ガチャ", url });
@@ -122,11 +110,17 @@ function App() {
       }
     } catch (e) {
       if ((e as Error).name !== "AbortError")
-        setNotice("リンクをコピーできませんでした。下のURLをご利用ください。");
+        setNotice(
+          "リンクをコピーできませんでした。URLを選択してご利用ください。",
+        );
     }
   }
   useEffect(() => {
-    if (!g || !replay || matchMedia("(prefers-reduced-motion: reduce)").matches)
+    if (
+      !g ||
+      g.id !== animate ||
+      matchMedia("(prefers-reduced-motion: reduce)").matches
+    )
       return;
     const paths = card.current?.querySelectorAll<SVGPathElement>("path");
     const animations: Animation[] = [];
@@ -143,63 +137,102 @@ function App() {
       );
     });
     return () => animations.forEach((a) => a.cancel());
-  }, [replay, g?.id]);
+  }, [animate, g?.id]);
+  const inResult = !!route.id || route.invalid;
+  const url = g && new URL(`/g/${g.id}`, location.origin).href;
+  const hits = g
+    ? [
+        ...new Set(
+          g.components.filter((c) => c.role === "reading").map((c) => c.char),
+        ),
+      ].filter(Boolean)
+    : [];
   return (
-    <>
-      <header className="topbar">
-        <a href="/" className="brand">
-          <span className="brand-mark">字</span>架空漢字ガチャ
-        </a>
-      </header>
-      <main>
-        <div className="intro">
-          <h1>架空漢字ガチャ</h1>
-          <p className="lead">
-            読みを入力すると、漢字の部品を組み合わせて字形を生成します。
-          </p>
-        </div>
-        <div className="workspace">
-          <section className="controls">
-            <div className="section-label">
-              <span>01</span> 入力
-            </div>
-            <form onSubmit={roll} noValidate>
-              <div className="tabs" role="tablist" aria-label="読みの種類">
-                {(["on", "kun"] as const).map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    role="tab"
-                    aria-selected={mode === m}
-                    onClick={() => {
-                      setMode(m);
-                      setTouched(false);
-                      mutation.reset();
-                    }}
-                  >
-                    {m === "on" ? "音読み" : "訓読み"}
-                    <small>
-                      {m === "on"
-                        ? "セイ、トウキョウ"
-                        : "あお（い）、はし（る）"}
-                    </small>
-                  </button>
-                ))}
+    <main className={inResult ? "screen result" : "screen home"}>
+      {inResult ? (
+        <>
+          {g ? (
+            <>
+              <figure className="paper" ref={card}>
+                <div
+                  className="glyph"
+                  dangerouslySetInnerHTML={{ __html: g.svg }}
+                />
+                <figcaption>{g.reading.display}</figcaption>
+              </figure>
+              <div className="link">
+                <a className="share-url" href={`/g/${g.id}`}>
+                  {url}
+                </a>
+                <button type="button" onClick={() => share(url!)}>
+                  リンクを共有
+                </button>
               </div>
-              <label htmlFor="reading">
-                {mode === "kun" ? "読み（語幹）" : "読み"}
-                <span aria-hidden="true">
-                  {[...normalize(reading)].length} / 5
-                </span>
-              </label>
+              <p className="notice" role="status">
+                {notice}
+              </p>
+              {hits.length > 0 && (
+                <section className="hits" aria-label="読みにヒットした漢字">
+                  <h2>ヒットした漢字</h2>
+                  <ul>
+                    {hits.map((c) => (
+                      <li key={c}>{c}</li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+            </>
+          ) : (
+            <p className="error" role="alert">
+              {route.invalid
+                ? "共有URLを確認してください。"
+                : saved.error
+                  ? message(saved.error)
+                  : "読み込み中…"}
+            </p>
+          )}
+          <a
+            className="again"
+            href="/"
+            onClick={(e) => {
+              e.preventDefault();
+              go("/");
+            }}
+          >
+            もう一度回す
+          </a>
+        </>
+      ) : (
+        <>
+          <h1>架空漢字ガチャ</h1>
+          <form onSubmit={roll} noValidate>
+            <div className="tabs" role="tablist" aria-label="読みの種類">
+              {(["on", "kun"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  role="tab"
+                  aria-selected={mode === m}
+                  onClick={() => {
+                    setMode(m);
+                    setTouched(false);
+                    mutation.reset();
+                  }}
+                >
+                  {m === "on" ? "音読み" : "訓読み"}
+                </button>
+              ))}
+            </div>
+            <div className="fields">
               <input
                 id="reading"
+                aria-label={mode === "kun" ? "読み（語幹）" : "読み"}
                 autoComplete="off"
                 spellCheck={false}
-                placeholder={mode === "on" ? "例：セイ" : "例：あお"}
+                placeholder={mode === "on" ? "セイ" : "あお"}
                 value={reading}
                 aria-invalid={!!(touched && issue?.field === "reading")}
-                aria-describedby="input-help input-error"
+                aria-describedby="input-error"
                 onChange={(e) => {
                   setReading(e.target.value);
                   mutation.reset();
@@ -215,236 +248,68 @@ function App() {
                 }}
               />
               {mode === "kun" && (
-                <>
-                  <label htmlFor="okurigana">
-                    送り仮名
-                    <span aria-hidden="true">
-                      {[...normalize(okurigana)].length} / 3
-                    </span>
-                  </label>
-                  <input
-                    id="okurigana"
-                    autoComplete="off"
-                    placeholder="例：い（省略可）"
-                    value={okurigana}
-                    onChange={(e) => setOkurigana(e.target.value)}
-                    aria-invalid={!!(touched && issue?.field === "okurigana")}
-                    onCompositionStart={() => {
-                      composingRef.current = true;
-                      setComposing(true);
-                    }}
-                    onCompositionEnd={() => {
-                      composingRef.current = false;
-                      setComposing(false);
-                    }}
-                  />
-                </>
-              )}
-              <p id="input-help" className="hint">
-                ひらがな・カタカナで入力
-                {mode === "kun"
-                  ? "。語幹と送り仮名は合計6文字まで。"
-                  : "。5文字まで。"}
-              </p>
-              <p id="input-error" className="error" role="alert">
-                {touched && issue
-                  ? issueMessage(issue)
-                  : mutation.error
-                    ? message(mutation.error)
-                    : ""}
-              </p>
-              <button
-                className="roll"
-                type="submit"
-                disabled={busy || composing}
-              >
-                {busy ? (
-                  <>
-                    <span className="spinner" /> 生成中…
-                  </>
-                ) : (
-                  <>
-                    ガチャを回す <span>↗</span>
-                  </>
-                )}
-              </button>
-            </form>
-            <div className="rarity-guide">
-              <span>レアリティ</span>
-              <div>
-                {["N", "R", "SR", "SSR", "UR"].map((r) => (
-                  <b key={r} className={`rarity-${r}`}>
-                    {r}
-                  </b>
-                ))}
-              </div>
-            </div>
-          </section>
-          <section
-            className={`result ${busy ? "is-busy" : ""}`}
-            aria-label="生成結果"
-            aria-busy={busy}
-          >
-            <div className="card-top">
-              <span>生成結果</span>
-              {g && (
-                <span className={`badge rarity-${g.rarity}`}>{g.rarity}</span>
-              )}
-            </div>
-            <div className="paper" ref={card}>
-              {g ? (
-                <div
-                  className="glyph"
-                  dangerouslySetInnerHTML={{ __html: g.svg }}
+                <input
+                  id="okurigana"
+                  aria-label="送り仮名"
+                  autoComplete="off"
+                  placeholder="い"
+                  value={okurigana}
+                  onChange={(e) => {
+                    setOkurigana(e.target.value);
+                    mutation.reset();
+                  }}
+                  aria-invalid={!!(touched && issue?.field === "okurigana")}
+                  onCompositionStart={() => {
+                    composingRef.current = true;
+                    setComposing(true);
+                  }}
+                  onCompositionEnd={() => {
+                    composingRef.current = false;
+                    setComposing(false);
+                  }}
                 />
-              ) : (
-                <div className="empty-glyph">
-                  <span>未</span>
-                </div>
-              )}
-              <div className="paper-grid" />
-              <span className="corner tl" />
-              <span className="corner br" />
-            </div>
-            <div className="result-caption" aria-live="polite">
-              {busy ? (
-                <h2>生成中…</h2>
-              ) : g ? (
-                <>
-                  <h2>{g.reading.display}</h2>
-                  <p>
-                    <span>{g.strokes}画</span>
-                    <span className="ids">{g.ids}</span>
-                  </p>
-                </>
-              ) : (
-                <>
-                  <h2>未生成</h2>
-                  <p>読みを入力して「ガチャを回す」を押してください。</p>
-                </>
               )}
             </div>
-            {(saved.isLoading || saved.error || invalidRoute) && !active && (
-              <p className="error" role="alert">
-                {invalidRoute
-                  ? "共有URLを確認してください。"
-                  : saved.error
-                    ? message(saved.error)
-                    : "読み込み中…"}
-              </p>
-            )}
-            {g && (
-              <div className="result-actions">
-                <button onClick={() => setReplay((x) => x + 1)} disabled={busy}>
-                  ▷ 描画を再生
-                </button>
-                <button className="share" onClick={share} disabled={busy}>
-                  結果を共有 ↗
-                </button>
-                <a
-                  href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(new URL(`/g/${g.id}`, location.origin).href)}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  aria-label="Xでシェア"
-                >
-                  𝕏
-                </a>
-              </div>
-            )}
-            {g && (
-              <a className="share-url" href={`/g/${g.id}`}>
-                {location.origin}/g/{g.id}
-              </a>
-            )}
-            <p className="notice" role="status">
-              {notice}
+            <p id="input-error" className="error" role="alert">
+              {touched && issue
+                ? issueMessage(issue)
+                : mutation.error
+                  ? message(mutation.error)
+                  : ""}
             </p>
-          </section>
-        </div>
-        {ids.length > 0 && (
-          <section className="history">
-            <div className="section-label">
-              <span>03</span> 履歴 <small>このブラウザの直近20件</small>
-            </div>
-            <div className="history-grid">
-              {ids.map((id) => (
-                <HistoryItem
-                  key={id}
-                  id={id}
-                  select={setActive}
-                  active={g?.id === id}
-                />
-              ))}
-            </div>
-          </section>
-        )}
-      </main>
-      <footer>
-        <p>
-          字形：<a href="https://kanjivg.tagaini.net/">KanjiVG © Ulrich Apel</a>
-          （改変・
-          <a href="https://creativecommons.org/licenses/by-sa/3.0/">
-            CC BY-SA 3.0
-          </a>
-          ）<br />
-          読み：
-          <a href="https://www.edrdg.org/wiki/index.php/KANJIDIC_Project">
-            KANJIDIC2 © EDRDG
-          </a>
-          （<a href="https://www.edrdg.org/edrdg/licence.html">CC BY-SA 4.0</a>
-          ）<br />
-          フォント：
-          <a href="https://github.com/notofonts/noto-cjk">Noto CJK © Adobe</a>（
-          <a href="https://openfontlicense.org/">SIL OFL 1.1</a>）
-        </p>
-        <details>
-          <summary>使い方・生成確率</summary>
-          <p>
-            字の意味や実在性は判定しません。結果と入力した読みは共有URLから公開で閲覧できます。
-          </p>
-          <p>
-            通常枠：N 70% / R 20% / SR 7% / SSR 2.5% / UR
-            0.5%。特殊枠は別抽選。幽霊文字枠は0.3%、日本時間2:00〜2:30は3%。「タイト」は固定の特殊枠です。
-          </p>
-          <p>
-            生成SVGはKanjiVGを再配置した改変物です。配布時は出典・変更内容・ライセンスを引き継いでください。保存はサービスの運用中に限り、無期限の提供を保証するものではありません。
-          </p>
-        </details>
-      </footer>
-    </>
-  );
-}
-function HistoryItem({
-  id,
-  select,
-  active,
-}: {
-  id: string;
-  select: (g: Glyph) => void;
-  active: boolean;
-}) {
-  const q = useQuery({ queryKey: ["glyph", id], queryFn: () => getGlyph(id) });
-  return (
-    <button
-      className={`history-item ${active ? "selected" : ""}`}
-      onClick={() => q.data && select(q.data)}
-      disabled={!q.data}
-      aria-label={
-        q.data
-          ? `${q.data.reading.display} ${q.data.rarity}を表示`
-          : "履歴を読み込み中"
-      }
-    >
-      {q.data ? (
-        <>
-          <div dangerouslySetInnerHTML={{ __html: q.data.svg }} />
-          <span>{q.data.reading.display}</span>
-          <small>{q.data.rarity}</small>
+            <button className="roll" type="submit" disabled={busy || composing}>
+              {busy ? (
+                <>
+                  <span className="spinner" /> 生成中…
+                </>
+              ) : (
+                "ガチャを回す"
+              )}
+            </button>
+          </form>
         </>
-      ) : (
-        <span>{q.error ? "取得できません" : "…"}</span>
       )}
-    </button>
+      <footer>
+        字形：<a href="https://kanjivg.tagaini.net/">KanjiVG © Ulrich Apel</a>
+        （改変・
+        <a href="https://creativecommons.org/licenses/by-sa/3.0/">
+          CC BY-SA 3.0
+        </a>
+        ）
+        <br />
+        読み：
+        <a href="https://www.edrdg.org/wiki/index.php/KANJIDIC_Project">
+          KANJIDIC2 © EDRDG
+        </a>
+        （<a href="https://www.edrdg.org/edrdg/licence.html">CC BY-SA 4.0</a>）
+        <br />
+        フォント：
+        <a href="https://github.com/notofonts/noto-cjk">Noto CJK © Adobe</a>（
+        <a href="https://openfontlicense.org/">SIL OFL 1.1</a>）
+        <br />
+        生成結果と読みは共有URLから公開で閲覧できます。
+      </footer>
+    </main>
   );
 }
 createRoot(document.getElementById("root")!).render(

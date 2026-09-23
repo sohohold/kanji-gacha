@@ -6,8 +6,11 @@ test("generate, share, reload the same SVG, and retrieve OGP", async ({
   await page.goto("/");
   await page.getByRole("textbox", { name: "読み", exact: true }).fill("ｷｬ");
   await page.getByRole("button", { name: "ガチャを回す" }).click();
-  await expect(page.locator(".result-caption h2")).toHaveText("キャ");
-  await expect(page.getByRole("button", { name: "結果を共有" })).toBeVisible();
+  await expect(page.locator(".paper figcaption")).toHaveText("キャ");
+  await expect(
+    page.getByRole("button", { name: "リンクを共有" }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/\/g\/[0-9a-f]{32}$/);
   const svg = await page.locator(".glyph").innerHTML();
   const href = await page.locator(".share-url").getAttribute("href");
   await page.goto(href!);
@@ -51,7 +54,8 @@ test("kun input on mobile", async ({ page }) => {
     .fill("あお");
   await page.getByRole("textbox", { name: "送り仮名", exact: true }).fill("い");
   await page.getByRole("button", { name: "ガチャを回す" }).click();
-  await expect(page.locator(".result-caption h2")).toHaveText("あお（い）");
+  await expect(page.locator(".paper figcaption")).toHaveText("あお（い）");
+  await page.goBack();
   await expect(
     page.getByRole("button", { name: "ガチャを回す" }),
   ).toBeEnabled();
