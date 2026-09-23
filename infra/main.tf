@@ -245,4 +245,6 @@ output "base_url" { value = local.deploy ? "https://${aws_cloudfront_distributio
 output "configured_base_url" { value = local.deploy ? var.base_url : null }
 output "distribution_id" { value = local.deploy ? aws_cloudfront_distribution.app[0].id : null }
 output "release" { value = var.release }
+# Read back by the manual apply in infra/README.md so it keeps a pause in place.
+output "generation_enabled" { value = var.generation_enabled }
 output "function_url" { value = local.deploy ? aws_lambda_function_url.app[0].function_url : null }

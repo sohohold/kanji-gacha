@@ -114,14 +114,15 @@ Dockerfileのweb・Goのステージはビルドマシンの環境で動き、Go
 
 ### 削除を含むplanで止まった場合
 
-リソース名の変更などで削除・置換が必要な変更は、ワークフローでは適用しません。手元の認証で内容を確認し、現在のイメージとURLを指定してapplyしてください。`image_uri` や `base_url` を省略すると既定値（空・localhost）に戻り、Lambda等の削除や共有URLの破損につながります。
+リソース名の変更などで削除・置換が必要な変更は、ワークフローでは適用しません。手元の認証で内容を確認し、現在のイメージとURLを指定してapplyしてください。`image_uri`・`base_url`・`generation_enabled` を省略すると既定値（空・localhost・`true`）に戻り、Lambda等の削除、共有URLの破損、停止中の生成の再開につながります。
 
 ```bash
-terraform -chdir=infra output   # release, base_url を確認
+terraform -chdir=infra output   # release, configured_base_url, generation_enabled を確認
 IMAGE=$(aws lambda get-function --function-name kanji-gacha --query 'Code.ImageUri' --output text)
 terraform -chdir=infra plan -out=manual.tfplan -var "image_uri=$IMAGE" \
   -var "base_url=$(terraform -chdir=infra output -raw configured_base_url)" \
-  -var "release=$(terraform -chdir=infra output -raw release)"
+  -var "release=$(terraform -chdir=infra output -raw release)" \
+  -var "generation_enabled=$(terraform -chdir=infra output -raw generation_enabled)"
 terraform -chdir=infra apply manual.tfplan
 ```
 
