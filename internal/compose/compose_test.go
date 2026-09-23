@@ -58,7 +58,7 @@ func TestGenerationLimits(t *testing.T) {
 			check(res.tree, 0)
 		}
 	}
-	for _, read := range []string{"セイ", "トウキョウ", "タイト", "ビャン"} {
+	for _, read := range []string{"セイ", "トウキョウ", "タイト"} {
 		r, _ := kana.Validate(kana.Input{Mode: "on", Reading: read})
 		g, err := e.Generate(context.Background(), r, time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC))
 		if err != nil {
@@ -66,9 +66,6 @@ func TestGenerationLimits(t *testing.T) {
 		}
 		if g.SVG == "" || g.IDS == "" || g.Strokes <= 0 {
 			t.Fatalf("empty result %s", read)
-		}
-		if read == "ビャン" && (g.Legend == nil || *g.Legend != "biang") {
-			t.Fatal("biang")
 		}
 	}
 }

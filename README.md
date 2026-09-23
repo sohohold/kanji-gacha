@@ -31,7 +31,7 @@ docker compose up --build
 - 音／訓の入力、NFKC・カナ正規化、厳密なJSONと文字列検証。
 - KanjiVGとKANJIDIC2から構築した辞書、256次元の音特徴、分節DP、温度付き抽選。
 - 左右・上下配置と手動指定した囲み・垂、N〜URの複雑性、200msの探索予算と退避候補。
-- 幽霊文字・タイト・ビャンの特殊枠、JSTの時刻条件。
+- 幽霊文字・タイトの特殊枠、JSTの時刻条件。
 - Go側で座標変換したSVG、描画再生、ブラウザ履歴20件。
 - ローカル／S3の保存、共有ページ、遅延生成して保存する1200×630 PNG。
 - React・TanStack Query、IME対応、モバイル表示、共有・コピー・X投稿リンク。
@@ -86,4 +86,4 @@ GoとTSは `shared/kana-cases.json` の同じ受理／拒否例を検証しま�
 
 KanjiVG © Ulrich Apel / CC BY-SA 3.0、KANJIDIC2 © James William Breen and EDRDG / CC BY-SA 4.0。派生辞書は両データを抽出・変換したものでCC BY-SA 4.0として配布します。KanjiVGから生成したSVGはCC BY-SA 3.0です。
 
-OGPの文字とビャン字形はNoto Sans CJK JP © Adobe / SIL OFL 1.1をサブセット・アウトライン変換して使用しています。ビャンの字形は筆順を持たないため再生しません。ライセンス本文は `licenses/` と `internal/render/assets/OFL.txt` にあります。
+OGPと画面の文字はNoto Sans CJK JP © Adobe / SIL OFL 1.1をサブセットして使用しています。ライセンス本文は `licenses/` と `internal/render/assets/OFL.txt` にあります。

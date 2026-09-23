@@ -42,7 +42,7 @@ test("reject invalid input and preserve IME composition", async ({ page }) => {
     page.getByRole("button", { name: "ガチャを回す" }),
   ).toBeEnabled();
 });
-test("kun input and biang legend on mobile", async ({ page }) => {
+test("kun input on mobile", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await page.getByRole("tab", { name: "訓読み" }).click();
@@ -55,11 +55,6 @@ test("kun input and biang legend on mobile", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: "ガチャを回す" }),
   ).toBeEnabled();
-  await page.getByRole("tab", { name: "音読み" }).click();
-  await page.getByRole("textbox", { name: "読み", exact: true }).fill("ビャン");
-  await page.getByRole("button", { name: "ガチャを回す" }).click();
-  await expect(page.locator(".result-caption h2")).toHaveText("ビャン");
-  await expect(page.getByRole("button", { name: "描画を再生" })).toBeDisabled();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
