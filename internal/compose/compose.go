@@ -430,7 +430,12 @@ func (e *Engine) Generate(ctx context.Context, r kana.Reading, now time.Time) (m
 	}
 	// 音符は1回だけ温度付きで抽選し、候補間では形の組み方だけを競わせる。
 	ph := choose(cands, rarity.Temperature, rng)
-	best, err := e.attempt(ph, 2, 1, rng, 1)
+	// 退避候補は意符1つ＋音符（N相当）を基本に、レアリティの部品数や総画数の上限を
+	// 超えるときは音符だけにする（音符は rank の段階で画数上限内に絞ってある）。
+	best, err := e.attempt(ph, min(2, rarity.MaxParts), 1, rng, 1)
+	if err != nil {
+		best, err = e.attempt(ph, 1, 1, rng, 1)
+	}
 	if err != nil {
 		return g, err
 	}

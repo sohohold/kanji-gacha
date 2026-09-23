@@ -151,6 +151,43 @@ func TestFallbackHasRadical(t *testing.T) {
 
 // Every part count a rarity may draw must be reachable within its depth limit
 // for every core size coreSize can pick, or the advertised range is skewed.
+// The fallback must stay within the configured limits: a one-part rarity gets a
+// bare phonetic, and a stroke limit the radical would break drops the radical.
+func TestFallbackRespectsLimits(t *testing.T) {
+	r, _ := kana.Validate(kana.Input{Mode: "on", Reading: "セイ"})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	for _, tc := range []struct {
+		name  string
+		tweak func(*Engine)
+	}{
+		{"one part", func(e *Engine) {
+			for i := range e.Config.Rarities {
+				e.Config.Rarities[i].MinParts, e.Config.Rarities[i].MaxParts = 1, 1
+			}
+		}},
+		{"tight strokes", func(e *Engine) { e.Config.MaxStrokes = 12 }},
+	} {
+		e := testEngine(t)
+		tc.tweak(e)
+		for i := 0; i < 20; i++ {
+			g, err := e.Generate(ctx, r, time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC))
+			if err != nil {
+				t.Fatalf("%s: %v", tc.name, err)
+			}
+			if g.Legend != nil {
+				continue
+			}
+			if g.Strokes > e.Config.MaxStrokes {
+				t.Fatalf("%s: %d strokes over the limit", tc.name, g.Strokes)
+			}
+			if tc.name == "one part" && len(g.Components) != 1 {
+				t.Fatalf("%s: %d components", tc.name, len(g.Components))
+			}
+		}
+	}
+}
+
 func TestRarityPartCountsReachable(t *testing.T) {
 	e := testEngine(t)
 	r, _ := kana.Validate(kana.Input{Mode: "on", Reading: "セイ"})
