@@ -1,0 +1,62 @@
+name: Deploy
+# Runs after CI passes on a push to main, so a failing test never deploys.
+# A manual run deploys the head of main without waiting for CI.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+# One deploy at a time, and never cancelled halfway through an apply.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+jobs:
+  deploy:
+    # Skipped until infra/bootstrap is applied and AWS_DEPLOY_ROLE_ARN is set.
+    if: >-
+      vars.AWS_DEPLOY_ROLE_ARN != '' && ((github.event_name == 'workflow_run'
+        && github.event.workflow_run.conclusion == 'success'
+        && github.event.workflow_run.event == 'push'
+        && github.event.workflow_run.head_repository.full_name == github.repository)
+      || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    # The deploy role trusts only this environment; its branch rule limits it
+    # to main.
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.base_url }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TF_IN_AUTOMATION: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          # History lets the script tell whether the deployed commit is newer.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ap-northeast-1
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.11.4
+          # The wrapper adds its own output to stdout, which breaks
+          # `terraform output -json` in the script.
+          terraform_wrapper: false
+      - uses: docker/setup-buildx-action@v4
+      - id: deploy
+        env:
+          RELEASE: ${{ github.event.workflow_run.head_sha || github.sha }}
+          BASE_URL: ${{ vars.BASE_URL }}
+          GENERATION_ENABLED: ${{ vars.GENERATION_ENABLED || 'true' }}
+        run: |
+          scripts/deploy.sh
+          echo "base_url=$(terraform -chdir=infra output -json | jq -r '.base_url.value // empty')" >> "$GITHUB_OUTPUT"
