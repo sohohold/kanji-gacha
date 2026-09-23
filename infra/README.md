@@ -2,9 +2,36 @@
 
 TerraformはECR、非公開S3、Lambda arm64、Function URL（AWS_IAM）、OAC、CloudFront、ロググループを定義しています。顧客VPC・NAT Gatewayは作りません。初期状態の `image_uri=""` はイメージpush前に必要なECR・S3・IAM・ログ等のみ作ります。
 
+## 実行前のAWS認証
+
+`terraform plan` にもAWS認証が必要です。Terraformを実行する環境（WSL・コンテナの場合はその内部）で認証を設定してください。以下のコマンドはリポジトリルートから実行します。
+
+まず [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) をインストールし、`aws --version` で確認します。
+
+IAM Identity Center（SSO）を利用できる場合は、次の手順でプロファイルを設定します。SSO Start URLとSSOリージョンは利用先の設定値を入力してください。SSOリージョンはリソースの配置先 `ap-northeast-1` と異なる場合があります。
+
+```bash
+aws configure sso --profile kanji-gacha # 初回のみ
+aws sso login --profile kanji-gacha
+export AWS_PROFILE=kanji-gacha
+aws sts get-caller-identity
+terraform -chdir=infra init
+terraform -chdir=infra plan
+```
+
+`get-caller-identity` の `Account` と `Arn` が意図したアカウント・ロールか確認してからplanへ進んでください。既存のプロファイルを使う場合は `kanji-gacha` をその名前に置き換え、初回設定を省略します。SSOのセッションが切れた場合は `aws sso login --profile kanji-gacha` を再実行します。
+
+SSOを使わず、既にIAMユーザーのアクセスキーが発行されている場合は、上記の `configure sso` と `sso login` の代わりに `aws configure --profile kanji-gacha` で対話入力します。一時認証情報を環境変数で渡す場合は `AWS_ACCESS_KEY_ID`・`AWS_SECRET_ACCESS_KEY` に加え `AWS_SESSION_TOKEN` も必要です。認証情報を `.tf`・`.tfvars` やGitに保存しないでください。
+
+`No valid credential sources found` と `no EC2 IMDS role found` が出る場合、利用可能な認証情報が見つからず、EC2のインスタンスメタデータへの問い合わせも失敗しています。ローカル実行では上記の認証設定を確認してください。`AWS_EC2_METADATA_DISABLED=true` だけを設定しても認証情報は補えません。
+
+参考：[AWS CLIのSSO設定](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sso.html)、[AWS Providerの認証設定](https://registry.terraform.io/providers/hashicorp/aws/latest/docs#authentication-and-configuration)。
+
+## 配置手順
+
 以下は実際にAWSリソースと費用が発生する操作です。実行対象アカウントとplanを確認してから使ってください。この実装作業ではapplyしていません。
 
-1. `terraform init` → `terraform plan` → `terraform apply` で保存先とECRを作成。
+1. 認証したシェルで `cd infra` し、`terraform init` → `terraform plan` → `terraform apply` で保存先とECRを作成。手順6の同期コマンドはリポジトリルートから実行。
 2. `terraform output -raw repository_url` でECR URIを確認し、AWS CLIの `ecr get-login-password` を `docker login --password-stdin` に渡して認証。
 3. リポジトリルートで `docker buildx build --platform linux/arm64 --provenance=false -t <ECR URI>:<一意の版> --push .`。
 4. pushしたイメージのdigest URIを `image_uri` に指定してplan/apply。CloudFrontとLambdaを作成。
