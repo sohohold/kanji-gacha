@@ -24,7 +24,7 @@
 
 stateバケット `kanji-gacha-473536070013-tfstate`（非公開・SSE-S3・バージョニング・旧版90日削除・HTTPSのみ・`prevent_destroy`）、GitHub OIDC Provider（既存があれば `github_oidc_provider_arn` で再利用）、デプロイロール `kanji-gacha-deploy`、Lambda実行ロールの権限境界 `kanji-gacha-lambda-boundary`、Budgetを作る。バケットを自ら作るため、初回は `local_override.tf` でローカルstateにして適用し、その後 `init -migrate-state` でS3の `bootstrap/terraform.tfstate` へ移す。アプリのstateは `app/terraform.tfstate`。バックエンドのバケット名は変数を使えないため `backend.tf` に直接書いた。
 
-デプロイロールの信頼条件は `aud=sts.amazonaws.com` と `sub=repo:sohohold/kanji-gacha:environment:production`。ブランチの制限はGitHubのEnvironment側（Deployment branchesを `main` のみ）で行う前提で、その設定はまだされていない。権限はアプリ名のARNへ絞り、削除系は与えていない。CloudFrontはARNで絞れないため操作の種類だけを限定した。
+デプロイロールの信頼条件は `aud=sts.amazonaws.com` と `sub=repo:sohohold@94224267/kanji-gacha@1381573804:environment:production`。このリポジトリのOIDCトークンはオーナーとリポジトリのIDを含むイミュータブルな `sub` で発行される（`gh api repos/sohohold/kanji-gacha/actions/oidc/customization/sub` の `use_immutable_subject: true`）。当初は `repo:sohohold/kanji-gacha:...` で信頼条件を書いていたため、最初のデプロイで `AssumeRoleWithWebIdentity` が拒否された。接頭辞は変数 `github_sub_prefix` で持つ。ブランチの制限はGitHubのEnvironment側（Deployment branchesを `main` のみ）で行う前提で、その設定はまだされていない。権限はアプリ名のARNへ絞り、削除系は与えていない。CloudFrontはARNで絞れないため操作の種類だけを限定した。
 
 Lambda実行ロールをデプロイロールが変更できると、インラインポリシー経由で権限を広げられる。これを防ぐため、アプリ側の `aws_iam_role.lambda` に権限境界を付け、デプロイロールは境界が付いている場合だけ `CreateRole`・`PutRolePolicy` 等を行えるようにした。そのためbootstrapをアプリ構成より先に適用する必要がある。
 

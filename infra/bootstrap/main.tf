@@ -20,7 +20,10 @@ provider "aws" {
 }
 variable "region" { default = "ap-northeast-1" }
 variable "name" { default = "kanji-gacha" }
-variable "github_repository" { default = "sohohold/kanji-gacha" }
+variable "github_sub_prefix" {
+  default     = "repo:sohohold@94224267/kanji-gacha@1381573804"
+  description = "Subject prefix GitHub issues for this repository: sub_claim_prefix from gh api repos/OWNER/REPO/actions/oidc/customization/sub."
+}
 variable "github_environment" {
   default     = "production"
   description = "GitHub Environment the deploy job runs in; the role trusts only this environment."
@@ -122,8 +125,10 @@ resource "aws_iam_role" "deploy" {
     Condition = { StringEquals = {
       "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com",
       # With a job-level environment the subject names the environment instead
-      # of the branch; the environment's branch rule restricts it to main.
-      "token.actions.githubusercontent.com:sub" = "repo:${var.github_repository}:environment:${var.github_environment}"
+      # of the branch; the environment's branch rule restricts it to main. The
+      # repository uses immutable subjects, which carry the owner and repository
+      # IDs, so a recreated repository with the same name does not match.
+      "token.actions.githubusercontent.com:sub" = "${var.github_sub_prefix}:environment:${var.github_environment}"
     } }
   }] })
 }
