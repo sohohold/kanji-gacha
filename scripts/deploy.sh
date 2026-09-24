@@ -46,7 +46,8 @@ plan_apply() {
   rm -f infra/deploy.tfplan
 }
 
-tf init -input=false
+account=$(aws sts get-caller-identity --query Account --output text)
+tf init -input=false -backend-config="bucket=kanji-gacha-$account-tfstate"
 
 # workflow_run events can complete out of order. Refuse to put back a commit
 # that the deployed one already contains; redeploying the same one is allowed.
