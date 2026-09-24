@@ -58,6 +58,7 @@ locals {
     lambda_role = "arn:aws:iam::${local.account}:role/${var.name}-lambda"
     function    = "arn:aws:lambda:${var.region}:${local.account}:function:${var.name}"
     log_group   = "arn:aws:logs:${var.region}:${local.account}:log-group:/aws/lambda/${var.name}"
+    dashboard   = "arn:aws:cloudwatch::${local.account}:dashboard/${var.name}"
   }
   oidc_provider_arn = var.github_oidc_provider_arn != "" ? var.github_oidc_provider_arn : aws_iam_openid_connect_provider.github[0].arn
 }
@@ -195,6 +196,8 @@ resource "aws_iam_role_policy" "deploy" {
     { Sid = "LogGroup", Effect = "Allow", Resource = [local.app.log_group, "${local.app.log_group}:*"], Action = [
       "logs:CreateLogGroup", "logs:PutRetentionPolicy", "logs:ListTagsForResource", "logs:ListTagsLogGroup", "logs:TagResource", "logs:UntagResource"
     ] },
+    # Dashboards take no tags. Deleting is not granted.
+    { Sid = "Dashboard", Effect = "Allow", Action = ["cloudwatch:GetDashboard", "cloudwatch:PutDashboard"], Resource = local.app.dashboard },
 
     # CloudFront IDs are assigned on creation, so these cannot be scoped by ARN.
     # Deletes are not granted. With default_tags the provider creates the
