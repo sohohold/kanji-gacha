@@ -88,6 +88,10 @@ GoとTSは `shared/kana-cases.json` の同じ受理／拒否例を検証しま�
 
 残作業：字形の目視調整、NGワード辞書の拡充（現在2語の最小実装）。PGO・夜間fuzz・カバレッジ閾値・静的lintの整備は別途行います。
 
+## ライセンス
+
+コードは GPL v3（`LICENSE`）です。`internal/kage` は KAGE エンジン（上地宏一、kurgm による TypeScript 版 `@kurgm/kage-engine`、GPL v3）を Go に移植したものです。
+
 ## データのライセンス
 
 KanjiVG © Ulrich Apel / CC BY-SA 3.0、KANJIDIC2 © James William Breen and EDRDG / CC BY-SA 4.0。派生辞書は両データを抽出・変換したものでCC BY-SA 4.0として配布します。KanjiVGから生成したSVGはCC BY-SA 3.0です。
