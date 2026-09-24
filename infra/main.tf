@@ -238,6 +238,110 @@ resource "aws_lambda_permission" "invoke" {
   source_arn               = aws_cloudfront_distribution.app[0].arn
   invoked_via_function_url = true
 }
+# Operations dashboard; alarms wait until thresholds are decided. CloudFront
+# publishes its metrics in us-east-1. Rarities and the generator's time budget
+# are read from the generator config so the charts follow it.
+locals {
+  generator = jsondecode(file("${path.module}/../config/generator.json"))
+  hourly    = { stat = "Sum", period = 3600 }
+  rarity_metrics = [for r in local.generator.rarities : ["KanjiGacha", "Glyphs", "Rarity", r.name, {
+    label = "${r.name}（設定 ${r.weight / 100}%）"
+  }]]
+  percentiles = [for s in ["p50", "p95", "Maximum"] : { stat = s, label = s }]
+}
+resource "aws_cloudwatch_dashboard" "app" {
+  count          = local.deploy ? 1 : 0
+  dashboard_name = var.name
+  dashboard_body = jsonencode({
+    start          = "-P7D"
+    periodOverride = "inherit"
+    widgets = [
+      { type = "text", x = 0, y = 0, width = 24, height = 2, properties = { markdown = join("\n", [
+        "生成系はEMFの名前空間 `KanjiGacha`（生成器まで届いた要求だけ）。退避率は成功した生成のうち退避候補を返した割合。",
+        "CloudFrontの4xxには入力エラー（400/422）、存在しない共有ID（404）、レート制限（429）も含まれる。ログは7日で消えるので、ログのウィジェットは7日より前を表示しない。"
+      ]) } },
+
+      { type = "metric", x = 0, y = 2, width = 8, height = 6, properties = merge(local.hourly, {
+        title   = "生成数（レアリティ別、1時間ごと）", region = var.region, view = "timeSeries", stacked = true,
+        metrics = local.rarity_metrics
+      }) },
+      { type = "metric", x = 8, y = 2, width = 8, height = 6, properties = {
+        title                = "レアリティの内訳（表示期間）", region = var.region, view = "pie", stat = "Sum", period = 3600,
+        setPeriodToTimeRange = true, labels = { visible = true }, metrics = local.rarity_metrics
+      } },
+      { type = "metric", x = 16, y = 2, width = 8, height = 6, properties = merge(local.hourly, {
+        title = "生成の失敗と退避率", region = var.region, view = "timeSeries",
+        metrics = [
+          ["KanjiGacha", "GenerationFailed", { label = "失敗（件）" }],
+          [{ expression = "100 * fb", label = "退避率（%）", yAxis = "right" }],
+          ["KanjiGacha", "Fallback", { id = "fb", stat = "Average", visible = false }]
+        ],
+        yAxis = { left = { min = 0, showUnits = false }, right = { min = 0, max = 100, showUnits = false } }
+      }) },
+
+      { type = "metric", x = 0, y = 8, width = 12, height = 6, properties = {
+        title       = "生成器の所要時間（ms）", region = var.region, view = "timeSeries", period = 3600,
+        metrics     = [for p in local.percentiles : ["KanjiGacha", "GenerationTime", p]],
+        annotations = { horizontal = [{ label = "timeoutMs", value = local.generator.timeoutMs }] },
+        yAxis       = { left = { min = 0, showUnits = false } }
+      } },
+      { type = "metric", x = 12, y = 8, width = 12, height = 6, properties = {
+        title   = "Lambdaの所要時間（要求全体、ms）", region = var.region, view = "timeSeries", period = 3600,
+        metrics = [for p in local.percentiles : ["AWS/Lambda", "Duration", "FunctionName", aws_lambda_function.app[0].function_name, p]],
+        yAxis   = { left = { min = 0, showUnits = false } }
+      } },
+
+      { type = "metric", x = 0, y = 14, width = 8, height = 6, properties = merge(local.hourly, {
+        title   = "Lambdaの呼び出し・エラー・スロットル", region = var.region, view = "timeSeries",
+        metrics = [for m in ["Invocations", "Errors", "Throttles"] : ["AWS/Lambda", m, "FunctionName", aws_lambda_function.app[0].function_name]]
+      }) },
+      { type = "metric", x = 8, y = 14, width = 8, height = 6, properties = {
+        title       = "Lambdaの同時実行数（最大）", region = var.region, view = "timeSeries", stat = "Maximum", period = 3600,
+        metrics     = [["AWS/Lambda", "ConcurrentExecutions", "FunctionName", aws_lambda_function.app[0].function_name]],
+        annotations = { horizontal = [{ label = "予約上限", value = aws_lambda_function.app[0].reserved_concurrent_executions }] },
+        yAxis       = { left = { min = 0 } }
+      } },
+      { type = "metric", x = 16, y = 14, width = 8, height = 6, properties = merge(local.hourly, {
+        title   = "CloudFrontのリクエスト", region = "us-east-1", view = "timeSeries",
+        metrics = [["AWS/CloudFront", "Requests", "Region", "Global", "DistributionId", aws_cloudfront_distribution.app[0].id]]
+      }) },
+
+      { type = "metric", x = 0, y = 20, width = 8, height = 6, properties = {
+        title   = "CloudFrontのエラー率（%）", region = "us-east-1", view = "timeSeries", stat = "Average", period = 3600,
+        metrics = [for m in ["4xxErrorRate", "5xxErrorRate"] : ["AWS/CloudFront", m, "Region", "Global", "DistributionId", aws_cloudfront_distribution.app[0].id]],
+        yAxis   = { left = { min = 0, showUnits = false } }
+      } },
+      { type = "metric", x = 8, y = 20, width = 16, height = 6, properties = {
+        # S3 reports storage once a day.
+        title = "結果バケットのオブジェクト数とサイズ（1日ごと）", region = var.region, view = "timeSeries", stat = "Average", period = 86400,
+        metrics = [
+          ["AWS/S3", "NumberOfObjects", "BucketName", aws_s3_bucket.results.id, "StorageType", "AllStorageTypes", { label = "オブジェクト数" }],
+          ["AWS/S3", "BucketSizeBytes", "BucketName", aws_s3_bucket.results.id, "StorageType", "StandardStorage", { label = "サイズ", yAxis = "right" }]
+        ]
+      } },
+
+      # Logs Insights widgets are billed per GB scanned each time they refresh.
+      { type = "log", x = 0, y = 26, width = 12, height = 6, properties = {
+        title = "コールドスタートとメモリ（1日ごと）", region = var.region, view = "table",
+        query = join(" ", [
+          "SOURCE '${aws_cloudwatch_log_group.app.name}'",
+          "| filter @type = \"REPORT\"",
+          "| stats count(*) as invocations, sum(ispresent(@initDuration)) as coldStarts, max(@initDuration) as maxInitMs,",
+          "max(@maxMemoryUsed / 1000 / 1000) as maxMemoryMB by bin(1d)"
+        ])
+      } },
+      { type = "log", x = 12, y = 26, width = 12, height = 6, properties = {
+        title = "アプリのログ（EMFと実行環境の行を除く）", region = var.region, view = "table",
+        query = join(" ", [
+          "SOURCE '${aws_cloudwatch_log_group.app.name}'",
+          "| fields @timestamp, @message",
+          "| filter @message not like /\"_aws\"/ and @message not like /^(START|END|REPORT|INIT_START|INIT_REPORT|EXTENSION|TELEMETRY)\\s/",
+          "| sort @timestamp desc | limit 50"
+        ])
+      } }
+    ]
+  })
+}
 output "repository_url" { value = aws_ecr_repository.app.repository_url }
 output "spa_bucket" { value = aws_s3_bucket.spa.id }
 output "results_bucket" { value = aws_s3_bucket.results.id }
@@ -250,3 +354,6 @@ output "release" { value = var.release }
 # Read back by the manual apply in infra/README.md so it keeps a pause in place.
 output "generation_enabled" { value = var.generation_enabled }
 output "function_url" { value = local.deploy ? aws_lambda_function_url.app[0].function_url : null }
+output "dashboard_url" {
+  value = local.deploy ? "https://${var.region}.console.aws.amazon.com/cloudwatch/home?region=${var.region}#dashboards/dashboard/${aws_cloudwatch_dashboard.app[0].dashboard_name}" : null
+}

@@ -1,14 +1,14 @@
 # AWSへの配置
 
-Terraformは2つの構成に分かれています。`infra/bootstrap` はアカウント単位で一度だけ人の認証で適用するもので、Terraform stateのS3バケット、GitHub ActionsのOIDCデプロイロール、Lambda実行ロールの権限境界、AWS Budgetsの通知を作ります。`infra` はアプリ本体で、ECR、非公開S3、Lambda arm64、Function URL（AWS_IAM）、OAC、CloudFront、ロググループを定義します。顧客VPC・NAT Gatewayは作りません。アプリ本体は通常 `.github/workflows/deploy.yml` が `scripts/deploy.sh` を通して適用します。
+Terraformは2つの構成に分かれています。`infra/bootstrap` はアカウント単位で一度だけ人の認証で適用するもので、Terraform stateのS3バケット、GitHub ActionsのOIDCデプロイロール、Lambda実行ロールの権限境界、AWS Budgetsの通知を作ります。`infra` はアプリ本体で、ECR、非公開S3、Lambda arm64、Function URL（AWS_IAM）、OAC、CloudFront、ロググループ、CloudWatchダッシュボードを定義します。顧客VPC・NAT Gatewayは作りません。アプリ本体は通常 `.github/workflows/deploy.yml` が `scripts/deploy.sh` を通して適用します。
 
-`infra/bootstrap` と `infra` は2026-09-23にアカウント `473536070013` へapply済みで、stateはS3にあります。アプリはGitHub Actionsからデプロイされ、`https://d1l7f1zwqn87zt.cloudfront.net` で動いています。以下の操作は実際にAWSリソースと費用を発生させるので、対象アカウントとplanを確認してから実行してください。「初回セットアップ」は別アカウントへ移すときや作り直すときの手順として残しています。
+配置先はアカウント `473536070013` で、stateはS3にあります。公開URLは `terraform -chdir=infra output -raw base_url` で得られます。以下の操作は実際にAWSリソースと費用を発生させるので、対象アカウントとplanを確認してから実行してください。
 
 ## 実行前のAWS認証
 
 `terraform plan` にもAWS認証が必要です。Terraformを実行する環境（WSL・コンテナの場合はその内部）で認証を設定してください。以下のコマンドはリポジトリルートから実行します。
 
-[AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) の2.32.0以降では、IAM Identity Center（SSO）を設定していなくてもブラウザ経由でログインできます。このプロジェクトではこの方法でplanまで確認済みです。
+[AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) の2.32.0以降では、IAM Identity Center（SSO）を設定していなくてもブラウザ経由でログインできます。
 
 ```bash
 aws login --profile kanji-gacha --region ap-northeast-1 --remote
@@ -82,13 +82,11 @@ cd ../..
 
 ### 4. 最初のデプロイ
 
-`deploy.yml` が `main` に入ると、以後 `main` へのpushでCIが成功するたびにデプロイされます。Actionsの画面から `Deploy` を手動実行（`main` のみ）しても構いませんが、デプロイされるのはCIが成功した最新のコミットなので、マージ後のCIが終わってから実行してください。初回は次のように進みます。
+`AWS_DEPLOY_ROLE_ARN` を設定すると、以後 `main` へのpushでCIが成功するたびにデプロイされます。Actionsの画面から `Deploy` を手動実行（`main` のみ）しても構いませんが、デプロイされるのはCIが成功した最新のコミットなので、マージ後のCIが終わってから実行してください。初回は次のように進みます。
 
 1. ECR・S3・IAM・ログ等だけを作る（`image_uri` 空）。
 2. イメージをbuild/pushし、そのdigestでLambda・Function URL・CloudFrontを作る。この時点の共有URLはlocalhostを指します。
 3. CloudFrontのドメインを `base_url` に入れて再度apply。ワークフローが疎通確認まで成功するまでは、URLを公開しないでください。
-
-以前このリポジトリの `infra` で `terraform init` した手元の環境では、バックエンドがS3に変わったため `terraform -chdir=infra init -reconfigure` が必要です（applyしていなければ移すstateはありません）。
 
 `vars.AWS_DEPLOY_ROLE_ARN` を設定する前に手元から配置したい場合は、認証したシェルで `scripts/deploy.sh` を実行すると同じ手順を踏みます（aws、terraform、docker buildx、jq、curl、git、sha256sumが必要）。
 
@@ -134,7 +132,7 @@ AWS Budgetsは、アカウント全体の実コストが月 `budget_limit_usd`�
 
 ## 独自ドメイン
 
-`BASE_URL` は、アプリが共有リンクとOGP画像のURLを組み立てるときに使う値です。変えるのはLambdaの環境変数だけで、CloudFrontをそのドメインで応答させる設定はしません。独自ドメインで公開するには、us-east-1で発行したACM証明書と、CloudFrontの別名（`aliases`）・`viewer_certificate` の設定、DNSのレコードが必要です。この構成にはまだその設定がありません。
+`BASE_URL` は、アプリが共有リンクとOGP画像のURLを組み立てるときに使う値です。変えるのはLambdaの環境変数だけで、CloudFrontをそのドメインで応答させる設定はしません。独自ドメインで公開するには、us-east-1で発行したACM証明書と、CloudFrontの別名（`aliases`）・`viewer_certificate` の設定、DNSのレコードが必要です。この構成にはその設定がありません。
 
 `scripts/deploy.sh` は、`BASE_URL` のホストがdistributionのドメインか別名に含まれていない場合、何もapplyせずに中止します。存在しないドメインを誤って設定し、開けない共有リンクを発行することを防ぐためです。独自ドメインへ移すときは、先に上記の設定をTerraformへ追加して適用し、最後にリポジトリ変数 `BASE_URL` を設定してください。
 
@@ -148,7 +146,7 @@ AWS Budgetsは、アカウント全体の実コストが月 `budget_limit_usd`�
 | `Component` | `app`（`infra`）／ `bootstrap`（`infra/bootstrap`） |
 | `ManagedBy` | `terraform` |
 
-タグを条件にしたポリシーは書いていないので、タグは分類のためだけのものです。ただしデプロイロールには、タグを書き換えるための `iam:TagRole`・`*:UntagResource` 等を追加しています。`iam:TagRole` はCreateRole時に権限境界の条件が付かない経路でも必要になるため、境界条件のない別ステートメントにしてあります。
+タグを条件にしたポリシーは書いていないので、タグは分類のためだけのものです。ただしデプロイロールには、タグを書き換えるための `iam:TagRole`・`*:UntagResource` 等を与えています。`iam:TagRole` はCreateRole時に権限境界の条件が付かない経路でも必要になるため、境界条件のない別ステートメントにしてあります。
 
 コスト配分に使うには、Billing and Cost Management → Cost allocation tags で `Project` を有効化します。`Component` も分けたいなら同様に有効化します。一覧にはタグの付いた課金対象リソースが検出されてから現れるので、applyの直後には出ません（最大24時間）。有効化した日以降のコストだけが対象で、遡るには同画面の「タグのバックフィル」を使います。
 
@@ -167,31 +165,44 @@ Lambdaの環境変数 `METRICS_NAMESPACE=KanjiGacha` が設定されていると
 
 入力・読み・SVG・生成ID・IPはメトリクスにもログにも書きません。形式エラー、生成停止中、レート制限で生成器まで届かなかった要求は数えません。カスタムメトリクスは名前とディメンション値の組ごとに課金されるため、ディメンションはレアリティだけにしてあり、全部で8個です（無料枠の10個以内）。ディメンションやメトリクスを増やすときは費用を確認してください。
 
-値はCloudWatchコンソールの Metrics → `KanjiGacha` で見られます。ダッシュボードとアラームは閾値が未決定のため作っていません。
+値はCloudWatchコンソールの Metrics → `KanjiGacha` か、下のダッシュボードで見られます。アラームは定義していません。
+
+### ダッシュボード
+
+`infra/main.tf` の `aws_cloudwatch_dashboard.app` が、CloudWatchダッシュボード `kanji-gacha` を作ります。URLは `terraform -chdir=infra output -raw dashboard_url` で得られます。既定の表示期間は7日（ロググループの保存期間と同じ）、グラフは1時間ごとの値です。
+
+| 行 | 内容 |
+| --- | --- |
+| 生成 | レアリティ別の生成数（積み上げ）、表示期間のレアリティの内訳（凡例に設定上の確率）、生成の失敗件数と退避率（`Fallback` の平均×100） |
+| 所要時間 | 生成器の p50/p95/最大（`timeoutMs` の線付き）、Lambdaの `Duration` の p50/p95/最大 |
+| Lambda・CloudFront | 呼び出し・エラー・スロットル、同時実行数（予約上限の線付き）、CloudFrontのリクエスト数と4xx/5xxエラー率（us-east-1のメトリクス） |
+| 結果バケット | オブジェクト数とサイズ（S3が1日1回報告） |
+| ログ | `REPORT` 行から日ごとのコールドスタート回数・最大 `Init Duration`・最大メモリ、EMFと実行環境の行を除いたアプリのログ50件 |
+
+レアリティの一覧と `timeoutMs` は `config/generator.json` から読むので、設定を変えれば次のデプロイでグラフも追従します。CloudFrontの4xxには、入力エラー（400/422）、存在しない共有ID（404）、レート制限（429）といった想定内の応答も含まれます。
+
+費用：ダッシュボードはアカウントあたり3つ（各50メトリクスまで）が無料で、それを超えると1つ月3 USDです。このダッシュボードのメトリクスは30個未満です。ログのウィジェットは表示・更新のたびにLogs Insightsのクエリとして走査量で課金されますが、保存が7日分なので通常は無視できる額です。既に他のダッシュボードが3つ以上あるアカウントでは、月1 USDの予算を超える点に注意してください。
+
+デプロイロールに与えているのは、このダッシュボードの `cloudwatch:GetDashboard` と `cloudwatch:PutDashboard` だけです。削除権限はないので、ダッシュボードを消すときは人の認証で行ってください。
 
 ## 権限の設計
 
-デプロイロール（`kanji-gacha-deploy`）の権限は `infra/bootstrap/main.tf` にあります。stateは `app/` 配下だけ、ECR・S3・Lambda・ロググループはこのアプリの名前のARNに限っています。CloudFrontはIDが作成時に決まるためARNで絞れず、作成・更新・無効化の操作だけを許可しています。バケット・リポジトリ・関数・distributionの削除権限は与えていません。
+デプロイロール（`kanji-gacha-deploy`）の権限は `infra/bootstrap/main.tf` にあります。stateは `app/` 配下だけ、ECR・S3・Lambda・ロググループ・ダッシュボードはこのアプリの名前のARNに限っています。CloudFrontはIDが作成時に決まるためARNで絞れず、作成・更新・無効化の操作だけを許可しています。バケット・リポジトリ・関数・distribution・ダッシュボードの削除権限は与えていません。
 
 Lambda実行ロールは権限境界 `kanji-gacha-lambda-boundary` を付けたときだけ作成・変更できます。境界は結果バケットの `glyphs/*`・`og/*` の読み書き、そのListBucket、ロググループへの書き込みに限られるため、Terraform経由でインラインポリシーを書き換えてもLambdaの権限はそれ以上に広がりません。`iam:PassRole` はこのロールをLambdaへ渡す場合だけです。境界ポリシーはアプリ構成より先に存在する必要があるので、bootstrapを先に適用してください。
+
+アプリ構成に新しい種類のリソースを加えるなど、デプロイロールの権限が増える変更は、bootstrapを人の認証で適用してから `main` に入れてください。順序が逆だと、デプロイのapplyが権限不足で途中で失敗します。`release` は更新されないので、bootstrapを適用してから `Deploy` を手動実行すれば回復します。
 
 アプリ側のIAMは結果バケットの `glyphs/*` と `og/*` のGet/Put、および404判定に必要な限定的ListBucketを許可します。Lambdaへの呼び出し権限は対象CloudFront distribution ARNに限定します。
 
 結果JSON・PNGには削除ライフサイクルを設定していません。S3をSPA同期先と結果保存先で分けているため、フロントの同期が生成結果を削除することはありません。
 
-## 実環境での確認状況
-
-2026-09-23の初回デプロイで、bootstrapとアプリのapply、OIDCでのロール引受、Actions経由のデプロイ、上記9のうちPOST以外の疎通確認が成功しました。ブラウザからのPOST→共有ページ→OGP画像も動作を確認し、`production` EnvironmentのDeployment branchesは `main` のみです。
-
-コールドスタートは、Lambdaの `REPORT` 行で `Init Duration` 4927ms、`Max Memory Used` 340MB でした。大半は辞書（当時は `internal/dict/dictionary.json.gz`、展開後約65MBのJSON）のデコードで、Web Adapterはその間 `app is not ready` を記録します。Lambdaの初期化の上限10秒には収まっていますが、しばらく呼ばれなかった後の最初の要求は約5秒待ちます。
-
-その後、辞書の保存形式をgzip圧縮のgob（`internal/dict/dictionary.gob.gz`）に変えました。手元（x86_64、1コア）では、辞書のデコードが約2.1秒から約0.5秒に、プロセス起動から `/healthz` が応答するまでが約2.2秒から約0.6秒になりました。Lambdaでは `Init Duration` が1.5〜2秒程度になる見込みです。
-
-### 未確認の事項
+## 未確認の事項
 
 POSTの確認は後から追加したもので、次のデプロイで初めて実行されます。403を期待した確認が422で失敗した場合は、OACが本文のハッシュを検証していないことになるので、原因を調べてください。
 
-- 辞書をgobにした後のコールドスタート。しばらく呼ばれなかった後に1回アクセスし、`aws logs filter-log-events --log-group-name /aws/lambda/kanji-gacha --filter-pattern '"Init Duration"'` で `REPORT` 行の `Init Duration` と `Max Memory Used` を見ます。2秒を大きく超える場合は、辞書以外の起動処理に時間がかかっていないかを調べてください。
+- ダッシュボード。デプロイロールに `GetDashboard`・`PutDashboard` を加えたbootstrapを人の認証で適用してから、ダッシュボードを含む変更を `main` に入れます。デプロイ後、全ウィジェットにデータが出ること（特にus-east-1のCloudFrontのメトリクスとLogs Insightsのクエリ）を確かめてください。アカウントのダッシュボードが3つを超えると課金されるので、`aws cloudwatch list-dashboards` で数も見ます。
+- 辞書をgobにした後のコールドスタート。JSON形式（展開後約65MB）の辞書では `Init Duration` 4927ms、`Max Memory Used` 340MB で、大半は辞書のデコードでした（その間Web Adapterは `app is not ready` を記録します）。gobにしたことで、手元（x86_64、1コア）ではプロセス起動から `/healthz` が応答するまでが約2.2秒から約0.6秒になり、Lambdaでは1.5〜2秒程度になる見込みです。しばらく呼ばれなかった後に1回アクセスし、`aws logs filter-log-events --log-group-name /aws/lambda/kanji-gacha --filter-pattern '"Init Duration"'` で `REPORT` 行の `Init Duration` と `Max Memory Used` を見ます。2秒を大きく超える場合は、辞書以外の起動処理に時間がかかっていないかを調べてください。
 - EMFのメトリクスが抽出されること。EMFはメトリクスフィルターを使わないので、ロググループの「メトリクスフィルター」には何も出ません。CloudWatchの「すべてのメトリクス」のカスタム名前空間 `KanjiGacha` か、`aws cloudwatch list-metrics --namespace KanjiGacha` で確認してください。生成した後でも現れない場合は、`aws logs filter-log-events --log-group-name /aws/lambda/kanji-gacha --filter-pattern '"_aws"'` でEMFの行が出力されているかを見ます。`Fallback` が `Glyphs` の合計に対して多ければ、`config/generator.json` の `timeoutMs`・`candidates`・`workers` を見直します。手元（x86_64、1コア）では生成の中央値が約5ms、95パーセンタイルが約9msで、200msの予算に対して十分な余裕があります。
 - レート制限が閲覧者ごとに分かれていること。制限は生成（POST）だけに掛かり、閲覧者ごとに最大10回まで続けて生成でき、1秒に1回分ずつ回復します（トークンバケット）。閲覧者はIPv4ならアドレス、IPv6なら/64で区別します。バケットはLambdaのインスタンスごとのメモリにあるため、同時に動くインスタンス（`reserved_concurrent_executions` により最大10）の間では共有されず、インスタンスが入れ替わると初期化されます。1台から下のコマンドで続けて12回生成し、後半に429が出た直後に、別の回線（携帯回線など）の端末のブラウザで生成できれば分かれています。`CloudFront-Viewer-Address` が届いていなければ全員が1つのバケットを共有するので、後者も429になります。このコマンドは結果を10件ほど保存します。
 
