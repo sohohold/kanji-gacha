@@ -6,7 +6,7 @@
 - KANJIDIC2: https://www.edrdg.org/kanjidic/kanjidic2.xml.gz / 2026-09-23取得。配布元は更新されるので、再ビルド時はSHA-256差分を確認してください。
 - 読み以外のKANJIDIC2の意味・各種辞書番号は取り込みません。
 - 部品の所属が曖昧なら除外し、同じ字を含む別の完全なグループは残します。
-- 中間データは `internal/dict/dictionary.json.gz` にgzip圧縮JSONとして同梱します。
+- 中間データは `internal/dict/dictionary.gob.gz` にgzip圧縮したGoのgob形式で同梱します。JSONより起動時の読み込みが約4分の1で済むためです。gobはGo以外から読めないので、辞書の字の一覧が必要なときは `go run ./cmd/builddict -chars` を使います。
 
 更新は仕様上の再現性保証とは独立です。配布元の更新条件に従い、公開運用中は少なくとも月次で辞書更新を確認してください。
 
@@ -22,7 +22,7 @@ go test ./internal/dict ./internal/compose ./internal/render
 
 ## フォント素材
 
-OGP用の `internal/render/assets/NotoSansJP.otf` はNoto Sans CJK JP RegularからASCII・かな・必要な見出し文字等に絞った静的OTF。画面用の `web/public/kanji-ui.otf` には辞書内の漢字とIDS記号も含めています。辞書更新後の再構築は `scripts/build-font.py` を使います。
+OGP用の `internal/render/assets/NotoSansJP.otf` はNoto Sans CJK JP RegularからASCII・かな・必要な見出し文字等に絞った静的OTF。画面用の `web/public/kanji-ui.otf` には辞書内の漢字とIDS記号も含めています。辞書更新後の再構築は `scripts/build-font.py` を使います。スクリプトは辞書の字を `go run ./cmd/builddict -chars` で得るので、Goが使える環境で実行してください。
 
 ```sh
 uv run --with fonttools python scripts/build-font.py /path/to/NotoSansCJKjp-Regular.otf

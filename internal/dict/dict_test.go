@@ -1,6 +1,10 @@
 package dict
 
-import "testing"
+import (
+	"bytes"
+	"reflect"
+	"testing"
+)
 
 // The bundled dictionary must carry every asset the special slots draw from;
 // Build enforces this, and this guards the artifact that ships.
@@ -50,5 +54,44 @@ func TestVerifySpecials(t *testing.T) {
 	}
 	if e = verifySpecials(&missing, nil); e == nil {
 		t.Error("a missing legend asset must fail the build")
+	}
+}
+
+// gob writes maps in iteration order; Encode must still give the same bytes
+// for the same dictionary, or every rebuild shows a spurious diff.
+func TestEncodeRoundTrip(t *testing.T) {
+	d, e := Load()
+	if e != nil {
+		t.Fatal(e)
+	}
+	small := Dictionary{Version: d.Version, Parts: d.Parts[:200], Sources: d.Sources, Report: d.Report}
+	b, e := Encode(small)
+	if e != nil {
+		t.Fatal(e)
+	}
+	for range 5 {
+		again, e := Encode(small)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if !bytes.Equal(b, again) {
+			t.Fatal("Encode is not deterministic")
+		}
+	}
+	got, e := Decode(b)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if !reflect.DeepEqual(got, small) {
+		t.Error("Decode(Encode(d)) differs from d")
+	}
+}
+
+// The cold start is mostly this decode.
+func BenchmarkDecode(b *testing.B) {
+	for b.Loop() {
+		if _, e := Decode(bundled); e != nil {
+			b.Fatal(e)
+		}
 	}
 }

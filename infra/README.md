@@ -183,12 +183,15 @@ Lambda実行ロールは権限境界 `kanji-gacha-lambda-boundary` を付けた�
 
 2026-09-23の初回デプロイで、bootstrapとアプリのapply、OIDCでのロール引受、Actions経由のデプロイ、上記9のうちPOST以外の疎通確認が成功しました。ブラウザからのPOST→共有ページ→OGP画像も動作を確認し、`production` EnvironmentのDeployment branchesは `main` のみです。
 
-コールドスタートは、Lambdaの `REPORT` 行で `Init Duration` 4927ms、`Max Memory Used` 340MB でした。大半は辞書（`internal/dict/dictionary.json.gz`、展開後約65MBのJSON）のデコードで、Web Adapterはその間 `app is not ready` を記録します。Lambdaの初期化の上限10秒には収まっていますが、しばらく呼ばれなかった後の最初の要求は約5秒待ちます。
+コールドスタートは、Lambdaの `REPORT` 行で `Init Duration` 4927ms、`Max Memory Used` 340MB でした。大半は辞書（当時は `internal/dict/dictionary.json.gz`、展開後約65MBのJSON）のデコードで、Web Adapterはその間 `app is not ready` を記録します。Lambdaの初期化の上限10秒には収まっていますが、しばらく呼ばれなかった後の最初の要求は約5秒待ちます。
+
+その後、辞書の保存形式をgzip圧縮のgob（`internal/dict/dictionary.gob.gz`）に変えました。手元（x86_64、1コア）では、辞書のデコードが約2.1秒から約0.5秒に、プロセス起動から `/healthz` が応答するまでが約2.2秒から約0.6秒になりました。Lambdaでは `Init Duration` が1.5〜2秒程度になる見込みです。
 
 ### 未確認の事項
 
 POSTの確認は後から追加したもので、次のデプロイで初めて実行されます。403を期待した確認が422で失敗した場合は、OACが本文のハッシュを検証していないことになるので、原因を調べてください。
 
+- 辞書をgobにした後のコールドスタート。しばらく呼ばれなかった後に1回アクセスし、`aws logs filter-log-events --log-group-name /aws/lambda/kanji-gacha --filter-pattern '"Init Duration"'` で `REPORT` 行の `Init Duration` と `Max Memory Used` を見ます。2秒を大きく超える場合は、辞書以外の起動処理に時間がかかっていないかを調べてください。
 - EMFのメトリクスが抽出されること。EMFはメトリクスフィルターを使わないので、ロググループの「メトリクスフィルター」には何も出ません。CloudWatchの「すべてのメトリクス」のカスタム名前空間 `KanjiGacha` か、`aws cloudwatch list-metrics --namespace KanjiGacha` で確認してください。生成した後でも現れない場合は、`aws logs filter-log-events --log-group-name /aws/lambda/kanji-gacha --filter-pattern '"_aws"'` でEMFの行が出力されているかを見ます。`Fallback` が `Glyphs` の合計に対して多ければ、`config/generator.json` の `timeoutMs`・`candidates`・`workers` を見直します。手元（x86_64、1コア）では生成の中央値が約5ms、95パーセンタイルが約9msで、200msの予算に対して十分な余裕があります。
 - レート制限が閲覧者ごとに分かれていること。制限は生成（POST）だけに掛かり、閲覧者ごとに最大10回まで続けて生成でき、1秒に1回分ずつ回復します（トークンバケット）。閲覧者はIPv4ならアドレス、IPv6なら/64で区別します。バケットはLambdaのインスタンスごとのメモリにあるため、同時に動くインスタンス（`reserved_concurrent_executions` により最大10）の間では共有されず、インスタンスが入れ替わると初期化されます。1台から下のコマンドで続けて12回生成し、後半に429が出た直後に、別の回線（携帯回線など）の端末のブラウザで生成できれば分かれています。`CloudFront-Viewer-Address` が届いていなければ全員が1つのバケットを共有するので、後者も429になります。このコマンドは結果を10件ほど保存します。
 

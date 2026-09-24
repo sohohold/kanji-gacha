@@ -1,7 +1,6 @@
 """Subset a locally downloaded Noto Sans CJK JP font."""
+import subprocess
 import sys
-import gzip
-import json
 from pathlib import Path
 from fontTools.ttLib import TTFont
 from fontTools import subset
@@ -19,10 +18,10 @@ sub.subset(font)
 font.save(root / 'internal/render/assets/NotoSansJP.otf')
 # Include every source character in browser text, where IDS strings are dynamic.
 font = TTFont(sys.argv[1])
-dictionary = json.loads(gzip.decompress((root / 'internal/dict/dictionary.json.gz').read_bytes()))
+# The dictionary is gob, so ask the Go tool for its characters.
+chars = subprocess.run(['go', 'run', './cmd/builddict', '-chars'], cwd=root, check=True, capture_output=True, text=True).stdout
 codes.update(range(0x2FF0, 0x3000))
-for part in dictionary['Parts']:
-    codes.update(ord(c) for c in part['Char'])
+codes.update(ord(c) for c in chars.rstrip('\n'))
 sub = subset.Subsetter(options=opts)
 sub.populate(unicodes=codes)
 sub.subset(font)
