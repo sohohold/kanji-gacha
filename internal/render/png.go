@@ -13,7 +13,7 @@ import (
 	"sync"
 )
 
-//go:embed assets/NotoSansJP.otf
+//go:embed assets/NotoSerifJP.otf
 var fontBytes []byte
 var parsed = sync.OnceValues(func() (*opentype.Font, error) { return opentype.Parse(fontBytes) })
 

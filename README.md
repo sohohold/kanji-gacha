@@ -92,4 +92,4 @@ GoとTSは `shared/kana-cases.json` の同じ受理／拒否例を検証しま�
 
 KanjiVG © Ulrich Apel / CC BY-SA 3.0、KANJIDIC2 © James William Breen and EDRDG / CC BY-SA 4.0。派生辞書は両データを抽出・変換したものでCC BY-SA 4.0として配布します。KanjiVGから生成したSVGはCC BY-SA 3.0です。
 
-OGPと画面の文字はNoto Sans CJK JP © Adobe / SIL OFL 1.1をサブセットして使用しています。ライセンス本文は `licenses/` と `internal/render/assets/OFL.txt` にあります。画面のスタイルは98.css © Jordan Scales（MIT、`licenses/98.css.txt`）を使用しています。
+OGPと画面の文字はNoto Serif CJK JP © Adobe / SIL OFL 1.1をサブセットして使用しています。ライセンス本文は `licenses/` と `internal/render/assets/OFL.txt` にあります。画面のスタイルは98.css © Jordan Scales（MIT、`licenses/98.css.txt`）を使用しています。

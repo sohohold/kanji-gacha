@@ -1,4 +1,4 @@
-"""Subset a locally downloaded Noto Sans CJK JP font."""
+"""Subset a locally downloaded Noto Serif CJK JP font."""
 import subprocess
 import sys
 from pathlib import Path
@@ -15,7 +15,7 @@ opts.name_IDs = ['*']
 sub = subset.Subsetter(options=opts)
 sub.populate(unicodes=codes)
 sub.subset(font)
-font.save(root / 'internal/render/assets/NotoSansJP.otf')
+font.save(root / 'internal/render/assets/NotoSerifJP.otf')
 # Include every source character in browser text, where IDS strings are dynamic.
 font = TTFont(sys.argv[1])
 # The dictionary is gob, so ask the Go tool for its characters.
