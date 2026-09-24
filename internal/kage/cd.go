@@ -9,12 +9,12 @@ import "math"
 // when a head or tail shape is unknown and then skips drawing with them.
 var undefined = math.NaN()
 
-func cdDrawCurveU(ps *polygons,
+func (font *mincho) cdDrawCurveU(ps *polygons,
 	x1_, y1_, sx1, sy1, sx2, sy2, x2_, y2_ float64,
 	a1, a2 float64,
 	opt1, haneAdjustment, opt3, opt4 float64) {
 
-	kMinWidthT := font.kMinWidthT - opt1/2
+	kMinWidthT := font.kMinWidthT - opt1/2*font.weight
 
 	x1, y1 := x1_, y1_
 	delta1 := undefined
@@ -41,10 +41,10 @@ func cdDrawCurveU(ps *polygons,
 	}
 
 	cornerOffset := 0.0
-	if has1 && (a1 == 22 || a1 == 27) && a2 == 7 && kMinWidthT > 6 {
+	if has1 && (a1 == 22 || a1 == 27) && a2 == 7 && kMinWidthT > 6*font.weight {
 		contourLength := math.Hypot(sx1-x1, sy1-y1) + math.Hypot(sx2-sx1, sy2-sy1) + math.Hypot(x2_-sx2, y2_-sy2)
 		if contourLength < 100 {
-			cornerOffset = (kMinWidthT - 6) * ((100 - contourLength) / 100)
+			cornerOffset = (kMinWidthT - 6*font.weight) * ((100 - contourLength) / 100)
 			x1 += cornerOffset
 		}
 	}
@@ -74,19 +74,19 @@ func cdDrawCurveU(ps *polygons,
 	}
 
 	if has1 && has2 {
-		drawCurveBody(ps, x1, y1, sx1, sy1, sx2, sy2, x2, y2, a1, a2, kMinWidthT, opt3, opt4)
+		font.drawCurveBody(ps, x1, y1, sx1, sy1, sx2, sy2, x2, y2, a1, a2, kMinWidthT, opt3, opt4)
 	}
 	if has1 {
 		isUpToBottom := has2 && y1 <= y2
-		drawCurveHead(ps, x1, y1, sx1, sy1, a1, kMinWidthT, isUpToBottom, cornerOffset)
+		font.drawCurveHead(ps, x1, y1, sx1, sy1, a1, kMinWidthT, isUpToBottom, cornerOffset)
 	}
 	if has2 {
 		isBottomToUp := has1 && y2 <= y1
-		drawCurveTail(ps, sx2, sy2, x2, y2, a1, a2, kMinWidthT, haneAdjustment, opt4, isBottomToUp)
+		font.drawCurveTail(ps, sx2, sy2, x2, y2, a1, a2, kMinWidthT, haneAdjustment, opt4, isBottomToUp)
 	}
 }
 
-func drawCurveBody(ps *polygons,
+func (font *mincho) drawCurveBody(ps *polygons,
 	x1, y1, sx1, sy1, sx2, sy2, x2, y2 float64,
 	a1, a2 float64,
 	kMinWidthT, opt3, opt4 float64) {
@@ -111,7 +111,7 @@ func drawCurveBody(ps *polygons,
 		deltadFunc = func(t float64) float64 { return math.Pow(1-t, hosomi) }
 	case isQuadratic && (opt3 > 0 || opt4 > 0): // ?????
 		deltadFunc = func(t float64) float64 {
-			return ((font.kMinWidthT - opt3/2) - (opt4-opt3)/2*t) / font.kMinWidthT
+			return ((font.kMinWidthT - opt3/2*font.weight) - (opt4-opt3)/2*font.weight*t) / font.kMinWidthT
 		}
 	default:
 		deltadFunc = func(float64) float64 { return 1 }
@@ -176,7 +176,7 @@ func drawCurveBody(ps *polygons,
 	ps.push(poly)
 }
 
-func drawCurveHead(ps *polygons,
+func (font *mincho) drawCurveHead(ps *polygons,
 	x1, y1, sx1, sy1 float64,
 	a1, kMinWidthT float64, isUpToBottom bool, cornerOffset float64) {
 	// process for head of stroke
@@ -265,14 +265,14 @@ func drawCurveHead(ps *polygons,
 	}
 }
 
-func drawCurveTail(ps *polygons,
+func (font *mincho) drawCurveTail(ps *polygons,
 	sx2, sy2, x2, y2 float64,
 	a1, a2 float64,
 	kMinWidthT, haneAdjustment, opt4 float64, isBottomToUp bool) {
 	// process for tail
 	switch a2 {
 	case 1, 8, 15: // the last filled circle ... it can change 15->5
-		kMinWidthT2 := font.kMinWidthT - opt4/2
+		kMinWidthT2 := font.kMinWidthT - opt4/2*font.weight
 		pen2 := newPen(x2, y2)
 		if sx2 == x2 {
 			pen2.setMatrix2(0, 1) // ?????
@@ -337,8 +337,8 @@ func drawCurveTail(ps *polygons,
 		))
 	case 14: // jump to left, allways go left
 		jumpFactor := 1.0
-		if kMinWidthT > 6 {
-			jumpFactor = 6.0 / kMinWidthT
+		if kMinWidthT > 6*font.weight {
+			jumpFactor = 6.0 * font.weight / kMinWidthT
 		}
 		haneLength := font.kWidth * 4 * math.Min(1-haneAdjustment/10, math.Pow(kMinWidthT/font.kMinWidthT, 3)) * jumpFactor
 		ps.push(newPen(x2, y2).getPolygon(
@@ -350,25 +350,25 @@ func drawCurveTail(ps *polygons,
 	}
 }
 
-func cdDrawBezier(ps *polygons,
+func (font *mincho) cdDrawBezier(ps *polygons,
 	x1, y1, x2, y2, x3, y3, x4, y4 float64,
 	a1, a2 float64,
 	opt1, haneAdjustment, opt3, opt4 float64) {
-	cdDrawCurveU(ps, x1, y1, x2, y2, x3, y3, x4, y4, a1, a2, opt1, haneAdjustment, opt3, opt4)
+	font.cdDrawCurveU(ps, x1, y1, x2, y2, x3, y3, x4, y4, a1, a2, opt1, haneAdjustment, opt3, opt4)
 }
 
-func cdDrawCurve(ps *polygons,
+func (font *mincho) cdDrawCurve(ps *polygons,
 	x1, y1, x2, y2, x3, y3 float64,
 	a1, a2 float64,
 	opt1, haneAdjustment, opt3, opt4 float64) {
-	cdDrawCurveU(ps, x1, y1, x2, y2, x2, y2, x3, y3, a1, a2, opt1, haneAdjustment, opt3, opt4)
+	font.cdDrawCurveU(ps, x1, y1, x2, y2, x2, y2, x3, y3, a1, a2, opt1, haneAdjustment, opt3, opt4)
 }
 
-func cdDrawLine(ps *polygons,
+func (font *mincho) cdDrawLine(ps *polygons,
 	x1, y1, x2, y2 float64,
 	a1, a2 float64, opt1, urokoAdjustment, kakatoAdjustment float64) {
 
-	kMinWidthT := font.kMinWidthT - opt1/2
+	kMinWidthT := font.kMinWidthT - opt1/2*font.weight
 
 	if x1 == x2 || y1 != y2 && (x1 > x2 || math.Abs(y2-y1) >= math.Abs(x2-x1) || a1 == 6 || a2 == 6) {
 		// if TATE stroke, use y-axis

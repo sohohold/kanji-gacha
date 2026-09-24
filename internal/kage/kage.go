@@ -59,17 +59,29 @@ func newStroke(d [11]float64) Stroke {
 	return s
 }
 
-// Type is the stroke type in the first column (1 straight, 2 curve, 3 bend,
-// 4 otsu, 6 complex curve, 7 vertical sweep, 0 special), or -1 when that
-// column has an option above 100 or is not a number.
+// Type is the stroke type the engine draws: the first column below 100 (1
+// straight, 2 curve, 3 bend, 4 otsu, 6 complex curve, 7 vertical sweep, 12
+// curve and line, 0 special), or -1 when the column is not a number.
 func (s Stroke) Type() int {
-	if s.a1_opt != 0 || math.IsNaN(s.a1_100) {
+	if math.IsNaN(s.a1_100) {
 		return -1
 	}
 	return int(s.a1_100)
 }
 
-// Points returns the control points the stroke's type uses.
+// Head and Tail are the head and tail shape columns below 100.
+func (s Stroke) Head() int { return jsInt(s.a2_100) }
+func (s Stroke) Tail() int { return jsInt(s.a3_100) }
+
+func jsInt(v float64) int {
+	if math.IsNaN(v) {
+		return -1
+	}
+	return int(v)
+}
+
+// Points returns the control points the stroke's type draws with, or nil
+// for a line that draws nothing.
 func (s Stroke) Points() [][2]float64 {
 	ps := [][2]float64{{s.x1, s.y1}, {s.x2, s.y2}, {s.x3, s.y3}, {s.x4, s.y4}}
 	switch s.Type() {
@@ -77,10 +89,29 @@ func (s Stroke) Points() [][2]float64 {
 		return ps[:2]
 	case 2, 3, 4:
 		return ps[:3]
-	case 6, 7:
+	case 6, 7, 12:
 		return ps
 	}
 	return nil
+}
+
+// Extent is the box around the control points of the strokes that draw,
+// ignoring coordinates that are not numbers. ok is false when nothing draws.
+func Extent(strokes []Stroke) (b Box, ok bool) {
+	b = Box{math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)}
+	for _, s := range strokes {
+		for _, p := range s.Points() {
+			if math.IsNaN(p[0]) || math.IsNaN(p[1]) {
+				continue
+			}
+			b.MinX = math.Min(b.MinX, p[0])
+			b.MinY = math.Min(b.MinY, p[1])
+			b.MaxX = math.Max(b.MaxX, p[0])
+			b.MaxY = math.Max(b.MaxY, p[1])
+			ok = true
+		}
+	}
+	return b, ok
 }
 
 // Box is an axis-aligned rectangle given by its minimum and maximum corners.

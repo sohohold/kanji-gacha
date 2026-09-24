@@ -1,5 +1,5 @@
 {
-  "version": 2, "canvas": 109, "margin": 4, "gap": 3, "strokeWidth": 2.5,
+  "version": 3, "canvas": 109, "margin": 8, "gap": 5,
   "minSlot": 8, "minRatio": 0.35, "maxRatio": 0.65,
   "maxParts": 16, "maxDepth": 8, "maxStrokes": 160,
   "candidates": 32, "workers": 2, "timeoutMs": 200, "topK": 16,

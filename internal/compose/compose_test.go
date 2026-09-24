@@ -5,9 +5,9 @@ import (
 	"context"
 	"kanji-gacha/config"
 	"kanji-gacha/internal/dict"
+	"kanji-gacha/internal/kage"
 	"kanji-gacha/internal/kana"
 	"kanji-gacha/internal/model"
-	"kanji-gacha/internal/render"
 	"log"
 	"math"
 	"math/rand/v2"
@@ -40,11 +40,14 @@ func TestGenerationLimits(t *testing.T) {
 			if err != nil {
 				continue
 			}
-			if len(res.paths) > e.Config.MaxStrokes {
+			if res.strokes > e.Config.MaxStrokes {
 				t.Fatal("stroke limit")
 			}
-			b := render.Bounds(res.paths)
-			if b.X < e.Config.Margin-0.001 || b.Y < e.Config.Margin-0.001 || b.X+b.W > 109-e.Config.Margin+.001 || b.Y+b.H > 109-e.Config.Margin+.001 {
+			// The engine floors each part's rectangle to whole KAGE units, so a
+			// part may shift by up to one unit.
+			b, ok := kage.Extent(kage.Expand(e.glyph(res.parts), e.Dict.Lookup))
+			m := e.Config.Margin * kageSize / e.Config.Canvas
+			if !ok || b.MinX < m-1.01 || b.MinY < m-1.01 || b.MaxX > kageSize-m+1.01 || b.MaxY > kageSize-m+1.01 {
 				t.Fatalf("out of canvas: %+v", b)
 			}
 			var check func(*model.Node, int)

@@ -10,6 +10,7 @@ import (
 	"golang.org/x/image/font/opentype"
 	"image/png"
 	"kanji-gacha/internal/model"
+	"strings"
 	"sync"
 )
 
@@ -72,11 +73,16 @@ func PNG(ctx context.Context, g model.Glyph) ([]byte, error) {
 		dc.DrawString(s, x, y)
 		return nil
 	}
+	// A glyph keeps the notice of the data it was drawn from.
+	credit := "GlyphWiki · KAGE engine / GPL v3 · KANJIDIC2 / CC BY-SA 4.0 · Noto CJK / OFL 1.1"
+	if strings.Contains(g.License, "KanjiVG") {
+		credit = "KanjiVG / CC BY-SA 3.0 · KANJIDIC2 / CC BY-SA 4.0 · Noto CJK / OFL 1.1"
+	}
 	for _, t := range []struct {
 		s          string
 		x, y, size float64
 		c          string
-	}{{"架空漢字ガチャ", 610, 145, 32, "#f3f0e7"}, {g.OGPReading, 610, 275, 42, "#c4f3b1"}, {g.Rarity, 610, 365, 64, "#f3f0e7"}, {fmt.Sprintf("%d 画", g.Strokes), 610, 423, 25, "#aab9ae"}, {"KanjiVG / CC BY-SA 3.0 · KANJIDIC2 / CC BY-SA 4.0 · Noto CJK / OFL 1.1", 70, 603, 13, "#aab9ae"}} {
+	}{{"架空漢字ガチャ", 610, 145, 32, "#f3f0e7"}, {g.OGPReading, 610, 275, 42, "#c4f3b1"}, {g.Rarity, 610, 365, 64, "#f3f0e7"}, {fmt.Sprintf("%d 画", g.Strokes), 610, 423, 25, "#aab9ae"}, {credit, 70, 603, 13, "#aab9ae"}} {
 		if e = text(t.s, t.x, t.y, t.size, t.c); e != nil {
 			return nil, e
 		}

@@ -19,25 +19,24 @@ type Rarity struct {
 	Temperature float64 `json:"temperature"`
 }
 type Config struct {
-	Version     int      `json:"version"`
-	Canvas      float64  `json:"canvas"`
-	Margin      float64  `json:"margin"`
-	Gap         float64  `json:"gap"`
-	StrokeWidth float64  `json:"strokeWidth"`
-	MinSlot     float64  `json:"minSlot"`
-	MinRatio    float64  `json:"minRatio"`
-	MaxRatio    float64  `json:"maxRatio"`
-	MaxParts    int      `json:"maxParts"`
-	MaxDepth    int      `json:"maxDepth"`
-	MaxStrokes  int      `json:"maxStrokes"`
-	Candidates  int      `json:"candidates"`
-	Workers     int      `json:"workers"`
-	TimeoutMs   int      `json:"timeoutMs"`
-	TopK        int      `json:"topK"`
-	Alpha       float64  `json:"alpha"`
-	Beta        float64  `json:"beta"`
-	Gamma       float64  `json:"gamma"`
-	Rarities    []Rarity `json:"rarities"`
+	Version    int      `json:"version"`
+	Canvas     float64  `json:"canvas"`
+	Margin     float64  `json:"margin"`
+	Gap        float64  `json:"gap"`
+	MinSlot    float64  `json:"minSlot"`
+	MinRatio   float64  `json:"minRatio"`
+	MaxRatio   float64  `json:"maxRatio"`
+	MaxParts   int      `json:"maxParts"`
+	MaxDepth   int      `json:"maxDepth"`
+	MaxStrokes int      `json:"maxStrokes"`
+	Candidates int      `json:"candidates"`
+	Workers    int      `json:"workers"`
+	TimeoutMs  int      `json:"timeoutMs"`
+	TopK       int      `json:"topK"`
+	Alpha      float64  `json:"alpha"`
+	Beta       float64  `json:"beta"`
+	Gamma      float64  `json:"gamma"`
+	Rarities   []Rarity `json:"rarities"`
 }
 
 // MaxReachableParts is the largest part count the generator can build within a
@@ -63,7 +62,7 @@ func Load(path string) (Config, error) {
 	if err = json.Unmarshal(b, &c); err != nil {
 		return c, err
 	}
-	if c.Canvas <= 0 || c.Margin < c.StrokeWidth/2 || c.Margin*2 >= c.Canvas || c.Gap < 0 || c.StrokeWidth <= 0 || c.MinSlot <= 0 || c.MinRatio <= 0 || c.MaxRatio >= 1 || c.MinRatio > c.MaxRatio || c.MaxParts < 1 || c.MaxParts > 64 || c.MaxDepth < 1 || c.MaxDepth > 10 || c.MaxStrokes < 1 || c.MaxStrokes > 512 || c.Candidates < 1 || c.Candidates > 1024 || c.Workers < 1 || c.Workers > 8 || c.TimeoutMs < 1 || c.TimeoutMs > 5000 || c.TopK < 1 {
+	if c.Canvas <= 0 || c.Margin < 0 || c.Margin*2 >= c.Canvas || c.Gap < 0 || c.MinSlot <= 0 || c.MinRatio <= 0 || c.MaxRatio >= 1 || c.MinRatio > c.MaxRatio || c.MaxParts < 1 || c.MaxParts > 64 || c.MaxDepth < 1 || c.MaxDepth > 10 || c.MaxStrokes < 1 || c.MaxStrokes > 512 || c.Candidates < 1 || c.Candidates > 1024 || c.Workers < 1 || c.Workers > 8 || c.TimeoutMs < 1 || c.TimeoutMs > 5000 || c.TopK < 1 {
 		return c, fmt.Errorf("invalid generator limits")
 	}
 	// レアリティ名は公開APIの enum（api/openapi.yaml）と画面の演出表に合わせる。

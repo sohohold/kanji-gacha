@@ -32,9 +32,13 @@ type mincho struct {
 	kAdjustUroko2Length float64
 	kAdjustTateStep     float64
 	kAdjustMageStep     float64
+
+	// weight scales the stroke width and the thinning the adjustments apply
+	// (see RenderWeights); it is 1 in the original.
+	weight float64
 }
 
-var font = mincho{
+var defaultFont = mincho{
 	kRate:       100,
 	kMinWidthY:  2,
 	kMinWidthU:  2,
@@ -60,6 +64,8 @@ var font = mincho{
 	kAdjustUroko2Length: 40,
 	kAdjustTateStep:     4,
 	kAdjustMageStep:     5,
+
+	weight: 1,
 }
 
 // Render draws the strokes as Mincho outlines and returns the polygons each
@@ -69,11 +75,68 @@ var font = mincho{
 // (0:97, 0:98, 0:99) moves the polygons drawn before it, whichever stroke
 // drew them.
 func Render(strokes []Stroke) [][]Polygon {
-	adj := adjustStrokes(strokes)
+	return defaultFont.render(strokes)
+}
+
+// RenderWeights is Render with each stroke drawn at its own weight: the
+// width of the stroke and of its ornaments (ウロコ, カカト, ハネ) scaled, as the
+// engine allows through its font parameters. The strokes are still adjusted
+// against each other at the original weight. The engine's width is fixed, so
+// a component drawn at a quarter of its design size fills in; a lighter weight
+// keeps it open. Weight 1 draws as Render.
+func RenderWeights(strokes []Stroke, weights []float64) [][]Polygon {
+	fonts := map[float64]*mincho{}
+	fontFor := func(w float64) *mincho {
+		if f, ok := fonts[w]; ok {
+			return f
+		}
+		f := defaultFont
+		scale := func(v []float64) []float64 {
+			out := make([]float64, len(v))
+			for i, x := range v {
+				out[i] = x * w
+			}
+			return out
+		}
+		f.weight = w
+		f.kMinWidthY *= w
+		f.kMinWidthU *= w
+		f.kMinWidthT *= w
+		f.kWidth *= w
+		f.kKakato *= w
+		f.kAdjustKakatoL = scale(f.kAdjustKakatoL)
+		f.kAdjustKakatoR = scale(f.kAdjustKakatoR)
+		f.kAdjustUrokoX = scale(f.kAdjustUrokoX)
+		f.kAdjustUrokoY = scale(f.kAdjustUrokoY)
+		fonts[w] = &f
+		return &f
+	}
+	fs := make([]*mincho, len(strokes))
+	for i := range strokes {
+		fs[i] = &defaultFont
+		if i < len(weights) && weights[i] != 1 {
+			fs[i] = fontFor(weights[i])
+		}
+	}
+	return defaultFont.draw(strokes, fs)
+}
+
+func (font *mincho) render(strokes []Stroke) [][]Polygon {
+	fs := make([]*mincho, len(strokes))
+	for i := range fs {
+		fs[i] = font
+	}
+	return font.draw(strokes, fs)
+}
+
+// draw adjusts the strokes with this font's parameters and draws each with
+// its own font.
+func (font *mincho) draw(strokes []Stroke, fonts []*mincho) [][]Polygon {
+	adj := font.adjustStrokes(strokes)
 	var ps polygons
 	ends := make([]int, len(adj))
 	for i := range adj {
-		dfDrawFont(&ps, &adj[i])
+		fonts[i].dfDrawFont(&ps, &adj[i])
 		ends[i] = len(ps.array)
 	}
 	out := make([][]Polygon, len(adj))
@@ -110,7 +173,7 @@ type adjusted struct {
 	mage float64
 }
 
-func adjustStrokes(strokes []Stroke) []adjusted {
+func (font *mincho) adjustStrokes(strokes []Stroke) []adjusted {
 	adj := make([]adjusted, len(strokes))
 	for i, s := range strokes {
 		adj[i] = adjusted{
@@ -123,17 +186,17 @@ func adjustStrokes(strokes []Stroke) []adjusted {
 			mage:      s.a3_opt_2,
 		}
 	}
-	adjustHane(adj)
-	adjustMage(adj)
-	adjustTate(adj)
-	adjustKakato(adj)
-	adjustUroko(adj)
-	adjustUroko2(adj)
-	adjustKirikuchi(adj)
+	font.adjustHane(adj)
+	font.adjustMage(adj)
+	font.adjustTate(adj)
+	font.adjustKakato(adj)
+	font.adjustUroko(adj)
+	font.adjustUroko2(adj)
+	font.adjustKirikuchi(adj)
 	return adj
 }
 
-func adjustHane(adj []adjusted) {
+func (font *mincho) adjustHane(adj []adjusted) {
 	type seg struct {
 		i         int
 		x, y1, y2 float64
@@ -179,7 +242,7 @@ type horiSeg struct {
 	y, x1, x2 float64
 }
 
-func adjustMage(adj []adjusted) {
+func (font *mincho) adjustMage(adj []adjusted) {
 	var hori []horiSeg
 	for i := range adj {
 		s := &adj[i].stroke
@@ -205,7 +268,7 @@ func adjustMage(adj []adjusted) {
 	}
 }
 
-func adjustTate(adj []adjusted) {
+func (font *mincho) adjustTate(adj []adjusted) {
 	type seg struct {
 		i         int
 		x, y1, y2 float64
@@ -231,7 +294,7 @@ func adjustTate(adj []adjusted) {
 	}
 }
 
-func adjustKakato(adj []adjusted) {
+func (font *mincho) adjustKakato(adj []adjusted) {
 	for i := range adj {
 		s := &adj[i].stroke
 		if !(s.a1_100 == 1 && s.a1_opt == 0 && (s.a3_100 == 13 || s.a3_100 == 23) && s.a3_opt == 0) {
@@ -259,7 +322,7 @@ func adjustKakato(adj []adjusted) {
 	}
 }
 
-func adjustUroko(adj []adjusted) {
+func (font *mincho) adjustUroko(adj []adjusted) {
 	for i := range adj {
 		s := &adj[i].stroke
 		if !(s.a1_100 == 1 && s.a1_opt == 0 && s.a3_100 == 0 && s.a3_opt == 0) { // no operation for TATE
@@ -300,7 +363,7 @@ func adjustUroko(adj []adjusted) {
 	}
 }
 
-func adjustUroko2(adj []adjusted) {
+func (font *mincho) adjustUroko2(adj []adjusted) {
 	var hori []horiSeg
 	for i := range adj {
 		a := &adj[i]
@@ -325,7 +388,7 @@ func adjustUroko2(adj []adjusted) {
 	}
 }
 
-func adjustKirikuchi(adj []adjusted) {
+func (font *mincho) adjustKirikuchi(adj []adjusted) {
 	type seg struct{ y, x1, x2 float64 }
 	var hori []seg
 	for i := range adj {
@@ -395,7 +458,7 @@ func dfTransform(ps *polygons, x1, y1, x2, y2, a2_100, a3_100, a2_opt, a3_opt fl
 	}
 }
 
-func dfDrawFont(ps *polygons, a *adjusted) {
+func (font *mincho) dfDrawFont(ps *polygons, a *adjusted) {
 	s := a.stroke
 	x1, y1, x2, y2, x3, y3, x4, y4 := s.x1, s.y1, s.x2, s.y2, s.x3, s.y3, s.x4, s.y4
 	switch s.a1_100 { // ... no need to divide
@@ -411,13 +474,13 @@ func dfDrawFont(ps *polygons, a *adjusted) {
 			}
 			tx1 := x2 + dx1
 			ty1 := y2 + dy1
-			cdDrawLine(ps, x1, y1, tx1, ty1, s.a2_100+s.a2_opt_1*100, 1, a.tate, 0, 0)
-			cdDrawCurve(ps,
+			font.cdDrawLine(ps, x1, y1, tx1, ty1, s.a2_100+s.a2_opt_1*100, 1, a.tate, 0, 0)
+			font.cdDrawCurve(ps,
 				tx1, ty1, x2, y2,
 				x2-font.kMage*(((font.kAdjustTateStep+4)-a.tate)/(font.kAdjustTateStep+4)), y2,
 				1, 14, math.Mod(a.tate, 10), a.hane, math.Floor(a.tate/10), s.a3_opt_2)
 		} else {
-			cdDrawLine(ps, x1, y1, x2, y2, s.a2_100+s.a2_opt_1*100, s.a3_100, a.tate, a.uroko, a.kakato)
+			font.cdDrawLine(ps, x1, y1, x2, y2, s.a2_100+s.a2_opt_1*100, s.a3_100, a.tate, a.uroko, a.kakato)
 		}
 	case 2:
 		// case 12: // ... no need
@@ -432,14 +495,14 @@ func dfDrawFont(ps *polygons, a *adjusted) {
 			}
 			tx1 := x3 + dx1
 			ty1 := y3 + dy1
-			cdDrawCurve(ps, x1, y1, x2, y2, tx1, ty1, s.a2_100+a.kirikuchi*100, 0, s.a2_opt_2, 0, s.a2_opt_3, 0)
-			cdDrawCurve(ps, tx1, ty1, x3, y3, x3-font.kMage, y3, 2, 14, s.a2_opt_2, a.hane, 0, s.a3_opt_2)
+			font.cdDrawCurve(ps, x1, y1, x2, y2, tx1, ty1, s.a2_100+a.kirikuchi*100, 0, s.a2_opt_2, 0, s.a2_opt_3, 0)
+			font.cdDrawCurve(ps, tx1, ty1, x3, y3, x3-font.kMage, y3, 2, 14, s.a2_opt_2, a.hane, 0, s.a3_opt_2)
 		} else {
 			a3 := s.a3_100
 			if s.a3_100 == 5 && s.a3_opt == 0 {
 				a3 = 15
 			}
-			cdDrawCurve(ps, x1, y1, x2, y2, x3, y3, s.a2_100+a.kirikuchi*100, a3, s.a2_opt_2, s.a3_opt_1, s.a2_opt_3, s.a3_opt_2)
+			font.cdDrawCurve(ps, x1, y1, x2, y2, x3, y3, s.a2_100+a.kirikuchi*100, a3, s.a2_opt_2, s.a3_opt_1, s.a2_opt_3, s.a3_opt_2)
 		}
 	case 3:
 		var dx1, dy1 float64
@@ -459,19 +522,19 @@ func dfDrawFont(ps *polygons, a *adjusted) {
 		tx2 := x2 + dx2
 		ty2 := y2 + dy2
 
-		cdDrawLine(ps, x1, y1, tx1, ty1, s.a2_100+s.a2_opt_1*100, 1, a.tate, 0, 0)
-		cdDrawCurve(ps, tx1, ty1, x2, y2, tx2, ty2, 1, 1, 0, 0, a.tate, a.mage)
+		font.cdDrawLine(ps, x1, y1, tx1, ty1, s.a2_100+s.a2_opt_1*100, 1, a.tate, 0, 0)
+		font.cdDrawCurve(ps, tx1, ty1, x2, y2, tx2, ty2, 1, 1, 0, 0, a.tate, a.mage)
 
 		if !(s.a3_100 == 5 && s.a3_opt_1 == 0 && !((x2 < x3 && x3-tx2 > 0) || (x2 > x3 && tx2-x3 > 0))) { // for closer position
 			opt2 := s.a3_opt_1 + a.mage*10
 			if s.a3_100 == 5 && s.a3_opt_1 == 0 {
 				opt2 = 0
 			}
-			cdDrawLine(ps, tx2, ty2, x3, y3, 6, s.a3_100, a.mage, opt2, opt2) // bolder by force
+			font.cdDrawLine(ps, tx2, ty2, x3, y3, 6, s.a3_100, a.mage, opt2, opt2) // bolder by force
 		}
 	case 12:
-		cdDrawCurve(ps, x1, y1, x2, y2, x3, y3, s.a2_100+s.a2_opt_1*100, 1, s.a2_opt_2, 0, s.a2_opt_3, 0)
-		cdDrawLine(ps, x3, y3, x4, y4, 6, s.a3_100, 0, s.a3_opt, s.a3_opt)
+		font.cdDrawCurve(ps, x1, y1, x2, y2, x3, y3, s.a2_100+s.a2_opt_1*100, 1, s.a2_opt_2, 0, s.a2_opt_3, 0)
+		font.cdDrawLine(ps, x3, y3, x4, y4, 6, s.a3_100, 0, s.a3_opt, s.a3_opt)
 	case 4:
 		rate := math.Hypot(x3-x2, y3-y2) / 120 * 6
 		if rate > 6 {
@@ -494,11 +557,11 @@ func dfDrawFont(ps *polygons, a *adjusted) {
 		tx2 := x2 + dx2
 		ty2 := y2 + dy2
 
-		cdDrawLine(ps, x1, y1, tx1, ty1, s.a2_100+s.a2_opt_1*100, 1, s.a2_opt_2+s.a2_opt_3*10, 0, 0)
-		cdDrawCurve(ps, tx1, ty1, x2, y2, tx2, ty2, 1, 1, 0, 0, 0, 0)
+		font.cdDrawLine(ps, x1, y1, tx1, ty1, s.a2_100+s.a2_opt_1*100, 1, s.a2_opt_2+s.a2_opt_3*10, 0, 0)
+		font.cdDrawCurve(ps, tx1, ty1, x2, y2, tx2, ty2, 1, 1, 0, 0, 0, 0)
 
 		if !(s.a3_100 == 5 && s.a3_opt == 0 && x3-tx2 <= 0) { // for closer position
-			cdDrawLine(ps, tx2, ty2, x3, y3, 6, s.a3_100, 0, s.a3_opt, s.a3_opt) // bolder by force
+			font.cdDrawLine(ps, tx2, ty2, x3, y3, 6, s.a3_100, 0, s.a3_opt, s.a3_opt) // bolder by force
 		}
 	case 6:
 		if s.a3_100 == 4 {
@@ -512,17 +575,17 @@ func dfDrawFont(ps *polygons, a *adjusted) {
 			}
 			tx1 := x4 + dx1
 			ty1 := y4 + dy1
-			cdDrawBezier(ps, x1, y1, x2, y2, x3, y3, tx1, ty1, s.a2_100+s.a2_opt_1*100, 1, s.a2_opt_2, 0, s.a2_opt_3, 0)
-			cdDrawCurve(ps, tx1, ty1, x4, y4, x4-font.kMage, y4, 1, 14, 0, a.hane, 0, s.a3_opt_2)
+			font.cdDrawBezier(ps, x1, y1, x2, y2, x3, y3, tx1, ty1, s.a2_100+s.a2_opt_1*100, 1, s.a2_opt_2, 0, s.a2_opt_3, 0)
+			font.cdDrawCurve(ps, tx1, ty1, x4, y4, x4-font.kMage, y4, 1, 14, 0, a.hane, 0, s.a3_opt_2)
 		} else {
 			a3 := s.a3_100
 			if s.a3_100 == 5 && s.a3_opt == 0 {
 				a3 = 15
 			}
-			cdDrawBezier(ps, x1, y1, x2, y2, x3, y3, x4, y4, s.a2_100+s.a2_opt_1*100, a3, s.a2_opt_2, s.a3_opt_1, s.a2_opt_3, s.a3_opt_2)
+			font.cdDrawBezier(ps, x1, y1, x2, y2, x3, y3, x4, y4, s.a2_100+s.a2_opt_1*100, a3, s.a2_opt_2, s.a3_opt_1, s.a2_opt_3, s.a3_opt_2)
 		}
 	case 7:
-		cdDrawLine(ps, x1, y1, x2, y2, s.a2_100+s.a2_opt_1*100, 1, a.tate, 0, 0)
-		cdDrawCurve(ps, x2, y2, x3, y3, x4, y4, 1, s.a3_100, math.Mod(a.tate, 10), s.a3_opt_1, math.Floor(a.tate/10), s.a3_opt_2)
+		font.cdDrawLine(ps, x1, y1, x2, y2, s.a2_100+s.a2_opt_1*100, 1, a.tate, 0, 0)
+		font.cdDrawCurve(ps, x2, y2, x3, y3, x4, y4, 1, s.a3_100, math.Mod(a.tate, 10), s.a3_opt_1, math.Floor(a.tate/10), s.a3_opt_2)
 	}
 }

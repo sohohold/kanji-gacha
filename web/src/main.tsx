@@ -204,7 +204,21 @@ function App() {
       return;
     const paths = card.current?.querySelectorAll<SVGPathElement>("path");
     const animations: Animation[] = [];
+    // 保存済みの旧形式は中心線を線で描く（g の fill が none）ので、線をなぞる。
+    // 現行の字は1画ごとの塗りつぶしなので、1画ずつ現れる。画数の多い字も数秒で描き終える。
+    const outline = !card.current?.querySelector('g[fill="none"]');
+    const step = outline ? Math.min(130, 2600 / (paths?.length || 1)) : 130;
     paths?.forEach((path, i) => {
+      if (outline) {
+        animations.push(
+          path.animate([{ opacity: 0 }, { opacity: 1 }], {
+            duration: 180,
+            delay: i * step,
+            fill: "both",
+          }),
+        );
+        return;
+      }
       const len = path.getTotalLength();
       animations.push(
         path.animate(
@@ -212,7 +226,7 @@ function App() {
             { strokeDasharray: `${len}`, strokeDashoffset: len },
             { strokeDasharray: `${len}`, strokeDashoffset: 0 },
           ],
-          { duration: 180, delay: i * 130, fill: "both" },
+          { duration: 180, delay: i * step, fill: "both" },
         ),
       );
     });
@@ -422,13 +436,23 @@ function App() {
         </div>
         <footer className="status-bar">
           <p className="status-bar-field">
+            {inResult && g?.license.includes("KanjiVG") && (
+              <>
+                <span>
+                  <a href="https://kanjivg.tagaini.net/">KanjiVG</a> © Ulrich
+                  Apel (改変,{" "}
+                  <a href="https://creativecommons.org/licenses/by-sa/3.0/">
+                    CC BY-SA 3.0
+                  </a>
+                  )
+                </span>{" "}
+                /{" "}
+              </>
+            )}
             <span>
-              <a href="https://kanjivg.tagaini.net/">KanjiVG</a> © Ulrich Apel
-              (改変,{" "}
-              <a href="https://creativecommons.org/licenses/by-sa/3.0/">
-                CC BY-SA 3.0
-              </a>
-              )
+              字形 <a href="https://glyphwiki.org/">GlyphWiki</a>（
+              <a href="https://github.com/kurgm/kage-engine">KAGE</a>{" "}
+              で描画、GPL v3）
             </span>{" "}
             /{" "}
             <span>
