@@ -22,10 +22,10 @@ go test ./internal/dict ./internal/compose ./internal/render
 
 ## フォント素材
 
-OGP用の `internal/render/assets/NotoSerifJP.otf` はNoto Serif CJK JP RegularからASCII・かな・必要な見出し文字等に絞った静的OTF。画面用の `web/public/kanji-ui.otf` は同じフォントから作り、辞書内の漢字とIDS記号も含めています。辞書更新後の再構築は `scripts/build-font.py` を使います。スクリプトは辞書の字を `go run ./cmd/builddict -chars` で得るので、Goが使える環境で実行してください。
+OGP用の `internal/render/assets/NotoSansJP.otf` はNoto Sans CJK JP RegularからASCII・かな・必要な見出し文字等に絞った静的OTF。画面用の `web/public/kanji-ui.otf` には辞書内の漢字とIDS記号も含めています。辞書更新後の再構築は `scripts/build-font.py` を使います。スクリプトは辞書の字を `go run ./cmd/builddict -chars` で得るので、Goが使える環境で実行してください。
 
 ```sh
-uv run --with fonttools python scripts/build-font.py /path/to/NotoSerifCJKjp-Regular.otf
+uv run --with fonttools python scripts/build-font.py /path/to/NotoSansCJKjp-Regular.otf
 ```
 
-出典: https://github.com/notofonts/noto-cjk/tree/main/Serif/OTF/Japanese
+出典: https://github.com/notofonts/noto-cjk/tree/main/Sans/OTF/Japanese
