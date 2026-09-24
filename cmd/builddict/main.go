@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	kvg := flag.String("kanjivg", "", "KanjiVG zip")
+	gw := flag.String("glyphwiki", "", "GlyphWiki dump.tar.gz")
 	kd := flag.String("kanjidic", "", "KANJIDIC2 xml.gz")
 	ov := flag.String("overrides", "data/component-overrides.json", "component overrides")
 	out := flag.String("out", "internal/dict/dictionary.gob.gz", "output")
@@ -39,7 +39,7 @@ func main() {
 		}
 		return b
 	}
-	d, e := dict.Build(read(*kvg), read(*kd), read(*ov))
+	d, e := dict.Build(read(*gw), read(*kd), read(*ov))
 	if e != nil {
 		log.Fatal(e)
 	}

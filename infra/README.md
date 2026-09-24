@@ -2,7 +2,7 @@
 
 Terraformは2つの構成に分かれています。`infra/bootstrap` はアカウント単位で一度だけ人の認証で適用するもので、Terraform stateのS3バケット、GitHub ActionsのOIDCデプロイロール、Lambda実行ロールの権限境界、AWS Budgetsの通知を作ります。`infra` はアプリ本体で、ECR、非公開S3、Lambda arm64、Function URL（AWS_IAM）、OAC、CloudFront、ロググループ、CloudWatchダッシュボードを定義します。顧客VPC・NAT Gatewayは作りません。アプリ本体は通常 `.github/workflows/deploy.yml` が `scripts/deploy.sh` を通して適用します。
 
-配置先はアカウント `473536070013` で、stateはS3にあります。公開URLは `terraform -chdir=infra output -raw base_url` で得られます。以下の操作は実際にAWSリソースと費用を発生させるので、対象アカウントとplanを確認してから実行してください。
+stateはS3のバケット `kanji-gacha-<アカウントID>-tfstate` にあります。公開URLは `terraform -chdir=infra output -raw base_url` で得られます。以下の操作は実際にAWSリソースと費用を発生させるので、対象アカウントとplanを確認してから実行してください。
 
 ## 実行前のAWS認証
 
@@ -12,11 +12,12 @@ Terraformは2つの構成に分かれています。`infra/bootstrap` はアカ�
 
 ```bash
 aws login --profile kanji-gacha --region ap-northeast-1 --remote
+aws configure set region ap-northeast-1 --profile kanji-gacha   # 初回のみ
 export AWS_PROFILE=kanji-gacha
 aws sts get-caller-identity
 ```
 
-`get-caller-identity` の `Account` が `473536070013` であることを確認してから進んでください。セッションが切れたら `aws login` を再実行します。
+`get-caller-identity` の `Account` が配置先のアカウントであることを確認してから進んでください。セッションが切れたら `aws login` を再実行します。`aws login` の `--region` はプロファイルに保存されないので、`aws configure set region` をしておかないと、以後のコマンドが `--region` なしでは `NoRegion` で失敗します。
 
 SSOを使う場合は `aws configure sso --profile kanji-gacha`（初回のみ）と `aws sso login --profile kanji-gacha` で、既存のアクセスキーを使う場合は `aws configure --profile kanji-gacha` で同じプロファイルを用意します。一時認証情報を環境変数で渡す場合は `AWS_SESSION_TOKEN` も必要です。認証情報を `.tf`・`.tfvars` やGitに保存しないでください。
 
@@ -49,7 +50,7 @@ stateの保存先バケット自体をこの構成で作るため、初回だけ
 ```hcl
 budget_emails = ["通知先のメールアドレス"]
 # budget_limit_usd         = "1"
-# github_oidc_provider_arn = "arn:aws:iam::473536070013:oidc-provider/token.actions.githubusercontent.com"
+# github_oidc_provider_arn = "arn:aws:iam::<アカウントID>:oidc-provider/token.actions.githubusercontent.com"
 ```
 
 ```bash
@@ -60,7 +61,7 @@ terraform plan    # state バケット、OIDC Provider、デプロイロール�
 terraform apply
 rm local_override.tf
 eval "$(aws configure export-credentials --profile kanji-gacha --format env)"   # バックエンド用
-terraform init -migrate-state   # ローカルstateをS3へコピーするか聞かれたら yes
+terraform init -migrate-state -backend-config="bucket=kanji-gacha-$(aws sts get-caller-identity --query Account --output text)-tfstate"   # ローカルstateをS3へコピーするか聞かれたら yes
 terraform plan                  # S3のstateで差分が出ないことを確認
 rm terraform.tfstate terraform.tfstate.backup
 cd ../..
@@ -68,7 +69,11 @@ cd ../..
 
 `local_override.tf` は `backend.tf` のS3設定を一時的に置き換えるためのファイルで、Gitには入りません。bootstrapのstateは `bootstrap/terraform.tfstate` に置かれ、デプロイロールからは読み書きできません。以後bootstrapを変更するときは、人の認証で `infra/bootstrap` から `terraform plan` / `apply` します。stateバケットには `prevent_destroy` を付け、バージョニング（旧版は90日で削除）、SSE-S3暗号化、公開ブロック、HTTPSのみのポリシーを設定しています。
 
-バックエンドの設定には変数を使えないため、`infra/backend.tf` と `infra/bootstrap/backend.tf` にはバケット名 `kanji-gacha-473536070013-tfstate` を直接書いています。別アカウントへ移す場合は両方を書き換えてください。
+アカウントIDをリポジトリに書かないため、`infra/backend.tf` と `infra/bootstrap/backend.tf` にはバケット名を書いていません。`terraform init` のたびに `-backend-config` で渡します。`scripts/deploy.sh` は認証中のアカウントIDから組み立てます。手で初期化するときは次のようにします（bootstrapは `-chdir=infra/bootstrap`）。
+
+```bash
+terraform -chdir=infra init -backend-config="bucket=kanji-gacha-$(aws sts get-caller-identity --query Account --output text)-tfstate"
+```
 
 ### 3. GitHubを設定する
 
@@ -115,6 +120,7 @@ Dockerfileのweb・Goのステージはビルドマシンの環境で動き、Go
 リソース名の変更などで削除・置換が必要な変更は、ワークフローでは適用しません。手元の認証で内容を確認し、現在のイメージとURLを指定してapplyしてください。`image_uri`・`base_url`・`generation_enabled` を省略すると既定値（空・localhost・`true`）に戻り、Lambda等の削除、共有URLの破損、停止中の生成の再開につながります。
 
 ```bash
+terraform -chdir=infra init -backend-config="bucket=kanji-gacha-$(aws sts get-caller-identity --query Account --output text)-tfstate"
 terraform -chdir=infra output   # release, configured_base_url, generation_enabled を確認
 IMAGE=$(aws lambda get-function --function-name kanji-gacha --query 'Code.ImageUri' --output text)
 terraform -chdir=infra plan -out=manual.tfplan -var "image_uri=$IMAGE" \
@@ -179,6 +185,8 @@ Lambdaの環境変数 `METRICS_NAMESPACE=KanjiGacha` が設定されていると
 | 結果バケット | オブジェクト数とサイズ（S3が1日1回報告） |
 | ログ | `REPORT` 行から日ごとのコールドスタート回数・最大 `Init Duration`・最大メモリ、EMFと実行環境の行を除いたアプリのログ50件 |
 
+2026-09-24〜25の実測では、辞書をgobにした後のコールドスタートは `Init Duration` 0.63〜0.81秒、`Max Memory Used` 約240MB（JSONのときは約4.9秒・340MB）でした。デプロイ直後の最初の1回だけは2.2〜3.4秒かかります。新しいイメージがまだキャッシュされていないためで、2回目以降は上の範囲に戻ります。生成器の所要時間は中央値約7ms・最大約9msで、退避は0件でした。
+
 レアリティの一覧と `timeoutMs` は `config/generator.json` から読むので、設定を変えれば次のデプロイでグラフも追従します。CloudFrontの4xxには、入力エラー（400/422）、存在しない共有ID（404）、レート制限（429）といった想定内の応答も含まれます。
 
 費用：ダッシュボードはアカウントあたり3つ（各50メトリクスまで）が無料で、それを超えると1つ月3 USDです。このダッシュボードのメトリクスは30個未満です。ログのウィジェットは表示・更新のたびにLogs Insightsのクエリとして走査量で課金されますが、保存が7日分なので通常は無視できる額です。既に他のダッシュボードが3つ以上あるアカウントでは、月1 USDの予算を超える点に注意してください。
@@ -199,18 +207,18 @@ Lambda実行ロールは権限境界 `kanji-gacha-lambda-boundary` を付けた�
 
 ## 未確認の事項
 
-POSTの確認は後から追加したもので、次のデプロイで初めて実行されます。403を期待した確認が422で失敗した場合は、OACが本文のハッシュを検証していないことになるので、原因を調べてください。
+- レート制限が閲覧者ごとに分かれていること。制限は生成（POST）だけに掛かり、閲覧者ごとに最大10回まで続けて生成でき、1秒に1回分ずつ回復します（トークンバケット）。閲覧者はIPv4ならアドレス、IPv6なら/64で区別します。バケットはLambdaのインスタンスごとのメモリにあるため、同時に動くインスタンス（`reserved_concurrent_executions` により最大10）の間では共有されず、インスタンスが入れ替わると初期化されます。1台から続けて生成すると11回目前後で429になることは確認済みです（2026-09-25）。残っているのは、別の閲覧者が巻き込まれないことの確認です。`CloudFront-Viewer-Address` が届いていなければ全員が1つのバケットを共有します。
 
-- ダッシュボード。デプロイロールに `GetDashboard`・`PutDashboard` を加えたbootstrapを人の認証で適用してから、ダッシュボードを含む変更を `main` に入れます。デプロイ後、全ウィジェットにデータが出ること（特にus-east-1のCloudFrontのメトリクスとLogs Insightsのクエリ）を確かめてください。アカウントのダッシュボードが3つを超えると課金されるので、`aws cloudwatch list-dashboards` で数も見ます。
-- 辞書をgobにした後のコールドスタート。JSON形式（展開後約65MB）の辞書では `Init Duration` 4927ms、`Max Memory Used` 340MB で、大半は辞書のデコードでした（その間Web Adapterは `app is not ready` を記録します）。gobにしたことで、手元（x86_64、1コア）ではプロセス起動から `/healthz` が応答するまでが約2.2秒から約0.6秒になり、Lambdaでは1.5〜2秒程度になる見込みです。しばらく呼ばれなかった後に1回アクセスし、`aws logs filter-log-events --log-group-name /aws/lambda/kanji-gacha --filter-pattern '"Init Duration"'` で `REPORT` 行の `Init Duration` と `Max Memory Used` を見ます。2秒を大きく超える場合は、辞書以外の起動処理に時間がかかっていないかを調べてください。
-- EMFのメトリクスが抽出されること。EMFはメトリクスフィルターを使わないので、ロググループの「メトリクスフィルター」には何も出ません。CloudWatchの「すべてのメトリクス」のカスタム名前空間 `KanjiGacha` か、`aws cloudwatch list-metrics --namespace KanjiGacha` で確認してください。生成した後でも現れない場合は、`aws logs filter-log-events --log-group-name /aws/lambda/kanji-gacha --filter-pattern '"_aws"'` でEMFの行が出力されているかを見ます。`Fallback` が `Glyphs` の合計に対して多ければ、`config/generator.json` の `timeoutMs`・`candidates`・`workers` を見直します。手元（x86_64、1コア）では生成の中央値が約5ms、95パーセンタイルが約9msで、200msの予算に対して十分な余裕があります。
-- レート制限が閲覧者ごとに分かれていること。制限は生成（POST）だけに掛かり、閲覧者ごとに最大10回まで続けて生成でき、1秒に1回分ずつ回復します（トークンバケット）。閲覧者はIPv4ならアドレス、IPv6なら/64で区別します。バケットはLambdaのインスタンスごとのメモリにあるため、同時に動くインスタンス（`reserved_concurrent_executions` により最大10）の間では共有されず、インスタンスが入れ替わると初期化されます。1台から下のコマンドで続けて12回生成し、後半に429が出た直後に、別の回線（携帯回線など）の端末のブラウザで生成できれば分かれています。`CloudFront-Viewer-Address` が届いていなければ全員が1つのバケットを共有するので、後者も429になります。このコマンドは結果を10件ほど保存します。
+  1秒で1回分回復するため、429が出た後に別の端末で試すだけでは、共有していても成功してしまいます。下のコマンドで約20秒間バケットを空に保ち、その間に別の回線（携帯回線など）の端末のブラウザで2〜3回生成してください。そちらが成功すれば分かれています（共有していればほぼ429になります）。別端末の要求が別のインスタンスに振り分けられると共有していても成功するので、その時間帯に `aws logs filter-log-events --log-group-name /aws/lambda/kanji-gacha --filter-pattern '"Init Duration"' --start-time <開始時刻のミリ秒>` でコールドスタートが記録されていないことも見ます。このコマンドは結果を30件ほど保存します。
 
 ```bash
+url="$(terraform -chdir=infra output -raw base_url)/api/v1/glyphs"
 body='{"mode":"on","reading":"セイ"}'
 hash=$(printf '%s' "$body" | sha256sum | cut -d' ' -f1)
-for i in $(seq 12); do
-  curl -s -o /dev/null -w '%{http_code}\n' -X POST -H 'Content-Type: application/json' \
-    -H "x-amz-content-sha256: $hash" --data-binary "$body" https://d1l7f1zwqn87zt.cloudfront.net/api/v1/glyphs
-done
+date +%s000   # 開始時刻（ミリ秒）
+for i in $(seq 45); do
+  curl -s -o /dev/null -w '%{http_code} ' -X POST -H 'Content-Type: application/json' \
+    -H "x-amz-content-sha256: $hash" --data-binary "$body" "$url"
+  sleep 0.3
+done; echo
 ```

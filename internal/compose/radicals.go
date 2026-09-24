@@ -10,7 +10,8 @@ import (
 )
 
 // 意符として外側に付ける部品。読みとは無関係に抽選し、形声文字の「意味側」を担わせる。
-// KanjiVG の要素名で持ち、辞書にないものは読み込み時に読み飛ばす。
+// 字で持ち、辞書の位置別の部品（偏・旁・冠・脚は位置別の変形部品、垂・繞・構は囲いの部品）を引き当てる。
+// 辞書にないものは読み込み時に読み飛ばす。
 var radicalChars = map[string][]string{
 	"left":   {"氵", "亻", "扌", "木", "口", "糸", "言", "金", "忄", "日", "月", "土", "女", "火", "石", "虫", "目", "王", "禾", "足", "車", "馬", "魚", "貝", "米", "衤", "礻", "⺨", "⻖", "彳", "弓", "山", "舟", "耳", "酉", "革", "冫", "歹", "矢", "方", "片", "巾", "立", "子", "羊", "鳥", "骨", "角"},
 	"right":  {"刂", "攵", "力", "頁", "欠", "殳", "隹", "彡", "斤", "卩", "戈", "寸", "鳥", "見", "阝", "⻏", "邑"},
@@ -26,17 +27,11 @@ type frameSpec struct {
 	inner model.Box
 }
 
-// 構・垂・繞の内側に音符を置く矩形（部品の外接矩形に対する比率）。
+// 構・垂・繞の内側に音符を置く矩形（部品の外接矩形に対する比率）。辞書は親字での
+// 使われ方から内側の矩形を求めるので、これは親字で囲いとして使われていない部品（戸など）の代わり。
 var frameSpecs = map[string]frameSpec{
 	"tare": {"⿸", model.Box{X: 0.3, Y: 0.3, W: 0.68, H: 0.68}},
 	"nyo":  {"⿺", model.Box{X: 0.34, Y: 0, W: 0.64, H: 0.74}},
-	"門":    {"⿵", model.Box{X: 0.24, Y: 0.28, W: 0.52, H: 0.66}},
-	"鬥":    {"⿵", model.Box{X: 0.24, Y: 0.3, W: 0.52, H: 0.64}},
-	"囗":    {"⿴", model.Box{X: 0.2, Y: 0.15, W: 0.6, H: 0.64}},
-	"匚":    {"⿷", model.Box{X: 0.22, Y: 0.14, W: 0.74, H: 0.72}},
-	"勹":    {"⿹", model.Box{X: 0.12, Y: 0.36, W: 0.62, H: 0.58}},
-	"冂":    {"⿵", model.Box{X: 0.2, Y: 0.3, W: 0.6, H: 0.66}},
-	"气":    {"⿹", model.Box{X: 0.05, Y: 0.42, W: 0.62, H: 0.54}},
 }
 
 type radical struct {
@@ -49,9 +44,6 @@ type radical struct {
 func (r *radical) frame(p *dict.Part) (frameSpec, bool) {
 	if p.Inner != nil && p.Operator != "" {
 		return frameSpec{p.Operator, *p.Inner}, true
-	}
-	if s, ok := frameSpecs[r.char]; ok {
-		return s, true
 	}
 	s, ok := frameSpecs[r.position]
 	return s, ok
@@ -69,6 +61,11 @@ func span(p *dict.Part, position string) float64 {
 	return p.Bounds.W * p.Bounds.H
 }
 
+// isFrame reports whether a radical position is a 構・垂・繞.
+func isFrame(position string) bool {
+	return position == "tare" || position == "nyo" || position == "kamae"
+}
+
 func buildRadicals(parts []dict.Part) []*radical {
 	byKey := map[[2]string][]*dict.Part{}
 	for i := range parts {
@@ -78,19 +75,27 @@ func buildRadicals(parts []dict.Part) []*radical {
 	var out []*radical
 	for position, chars := range radicalChars {
 		for _, c := range chars {
-			vs := byKey[[2]string{c, position}]
-			if len(vs) == 0 {
-				continue
-			}
-			sort.SliceStable(vs, func(i, j int) bool { return span(vs[i], position) > span(vs[j], position) })
-			r := &radical{char: c, position: position, variants: vs}
-			if position == "tare" || position == "nyo" || position == "kamae" {
-				if _, ok := r.frame(vs[0]); !ok {
+			if !isFrame(position) {
+				vs := byKey[[2]string{c, position}]
+				if len(vs) == 0 {
 					continue
 				}
+				sort.SliceStable(vs, func(i, j int) bool { return span(vs[i], position) > span(vs[j], position) })
+				out = append(out, &radical{char: c, position: position, variants: vs, weight: weight(vs[0])})
+				continue
 			}
-			// 出現頻度の平方根で重みを付け、氵のような定番を多めにしつつ珍しい部首も残す。
-			r.weight = math.Sqrt(math.Max(vs[0].Frequency, 0.002))
+			// 囲いは親字でよく使われる形から順に、内側の矩形があるものだけを使う。
+			r := &radical{char: c, position: position}
+			for _, v := range byKey[[2]string{c, "enclosure"}] {
+				if _, ok := r.frame(v); ok {
+					r.variants = append(r.variants, v)
+				}
+			}
+			if len(r.variants) == 0 {
+				continue
+			}
+			sort.SliceStable(r.variants, func(i, j int) bool { return r.variants[i].FrameUses > r.variants[j].FrameUses })
+			r.weight = weight(r.variants[0])
 			out = append(out, r)
 		}
 	}
@@ -102,6 +107,9 @@ func buildRadicals(parts []dict.Part) []*radical {
 	})
 	return out
 }
+
+// weight は出現頻度の平方根。氵のような定番を多めにしつつ珍しい部首も残す。
+func weight(p *dict.Part) float64 { return math.Sqrt(math.Max(p.Frequency, 0.002)) }
 
 // 位置の種類ごとの出やすさ。偏を主役にし、構・垂・繞は控えめにする。
 var positionWeights = map[string]float64{"left": 0.5, "top": 0.18, "right": 0.1, "bottom": 0.1, "tare": 0.05, "nyo": 0.04, "kamae": 0.03}

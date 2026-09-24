@@ -11,7 +11,8 @@ import (
 
 var tokens = regexp.MustCompile(`[MmCcSsLlHhVvQqZz]|[-+]?(?:\d*\.\d+|\d+\.?\d*)(?:[eE][-+]?\d+)?`)
 
-// ParsePath converts KanjiVG paths into absolute cubic Beziers, preserving each stroke.
+// ParsePath converts an SVG path into absolute cubic Beziers: the stored
+// KanjiVG centre lines of older glyphs and the outlines of newer ones.
 func ParsePath(d string) (model.Stroke, error) {
 	ts := tokens.FindAllString(d, -1)
 	left := tokens.ReplaceAllString(d, "")
@@ -158,31 +159,4 @@ func ParsePath(d string) (model.Stroke, error) {
 		return nil, fmt.Errorf("empty stroke")
 	}
 	return out, nil
-}
-func Bounds(strokes []model.Stroke) model.Box {
-	minX, minY, maxX, maxY := math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)
-	for _, s := range strokes {
-		for _, c := range s {
-			for _, p := range []model.Point{c.Start, c.C1, c.C2, c.End} {
-				minX = math.Min(minX, p.X)
-				minY = math.Min(minY, p.Y)
-				maxX = math.Max(maxX, p.X)
-				maxY = math.Max(maxY, p.Y)
-			}
-		}
-	}
-	return model.Box{X: minX, Y: minY, W: math.Max(maxX-minX, 1), H: math.Max(maxY-minY, 1)}
-}
-func Fit(strokes []model.Stroke, from, to model.Box) []model.Stroke {
-	f := func(p model.Point) model.Point {
-		return model.Point{X: to.X + (p.X-from.X)*to.W/from.W, Y: to.Y + (p.Y-from.Y)*to.H/from.H}
-	}
-	out := make([]model.Stroke, len(strokes))
-	for i, s := range strokes {
-		out[i] = make(model.Stroke, len(s))
-		for j, c := range s {
-			out[i][j] = model.Curve{Start: f(c.Start), C1: f(c.C1), C2: f(c.C2), End: f(c.End)}
-		}
-	}
-	return out
 }

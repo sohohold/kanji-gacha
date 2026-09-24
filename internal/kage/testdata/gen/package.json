@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "type": "module",
+  "description": "Generates internal/kage/testdata/golden.json.gz from the reference engine. Run: npm ci && node gen.mjs",
+  "dependencies": {
+    "@kurgm/kage-engine": "0.7.0"
+  }
+}

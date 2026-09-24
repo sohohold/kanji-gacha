@@ -6,3 +6,4 @@ web/test-results
 web/playwright-report
 .terraform
 **/*.test
+internal/kage/testdata/gen/node_modules

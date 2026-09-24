@@ -29,10 +29,10 @@ docker compose up --build
 ## 現在動く機能
 
 - 音／訓の入力（音読みは2モーラ以下）、NFKC・カナ正規化、厳密なJSONと文字列検証。
-- KanjiVGとKANJIDIC2から構築した辞書、256次元の音特徴、温度付き抽選。読みで選んだ音符1字に、読みと無関係に抽選した意符（偏・冠・脚・垂・繞・構）を重ねる形声文字型の生成。
+- GlyphWikiとKANJIDIC2から構築した辞書、256次元の音特徴、温度付き抽選。読みで選んだ音符1字に、読みと無関係に抽選した意符（偏・冠・脚・垂・繞・構）を重ねる形声文字型の生成。
 - 左右・上下配置と手動指定した囲み・垂、N〜URの複雑性、200msの探索予算と退避候補。
 - 幽霊文字・タイトの特殊枠、JSTの時刻条件。
-- Go側で座標変換したSVG、生成直後の書き順アニメーション、結果表示時のbounceIn・rubberBandとレアリティ別の候補から1種類を選んだ絵文字リアクション。
+- KAGEエンジン（Goへの移植）で肉付けした明朝体のSVG、生成直後に1画ずつ現れるアニメーション、結果表示時のbounceIn・rubberBandとレアリティ別の候補から1種類を選んだ絵文字リアクション。
 - ローカル／S3の保存、共有ページ、遅延生成して保存する1200×630 PNG。
 - React・TanStack Query、IME対応、モバイル表示、共有・コピー。画面は[98.css](https://jdan.github.io/98.css/)のウィンドウで、ホーム（アプリ名・入力・ボタン・ライセンス）と結果（字形・リンク・ベース・ライセンス）の縦一列。
 - ダーク画面、動きを減らす設定への対応、データ提供元とライセンスの表記。
@@ -86,10 +86,16 @@ GoとTSは `shared/kana-cases.json` の同じ受理／拒否例を検証しま�
 
 [infra/README.md](infra/README.md) に、stateバケット・OIDCデプロイロール・Budgetsを作るbootstrap構成、ECR・Lambda・CloudFront・S3のアプリ構成、GitHub Actionsのデプロイ（`.github/workflows/deploy.yml` と `scripts/deploy.sh`）の手順を記載しています。VPC接続はありません。2026-09-23に両構成を適用し、GitHub Actionsからのデプロイまで動作しています。実環境での確認状況は同READMEの「実環境での確認状況」にあります。費用は仕様書7.2の仮定を実測で更新してください。
 
-残作業：字形の目視調整、NGワード辞書の拡充（現在2語の最小実装）。PGO・夜間fuzz・カバレッジ閾値・静的lintの整備は別途行います。
+残作業：字形の目視調整、NGワード辞書の拡充（現在2語の最小実装）。GlyphWikiへの移行（2026-09-24）の後は、デプロイして `Init Duration` と `Max Memory Used` を移行前（0.63〜0.81秒、約240MB）と比べること、`docker compose` での起動（MinIO経由の保存と旧形式の字の表示）を確かめることが残っています。手元の計測では辞書の読み込みが約0.5〜0.7秒から約0.09秒に、確保するメモリが約288MBから約79MBになりました。部品数の多い字（SR以上）で部品が点のように小さくなることがあり、配置の計算は見直しの余地があります。リポジトリを public にするときは、git の過去の履歴に残るAWSのアカウントIDと本番ドメインの扱い（履歴から消すか、新しいリポジトリとして公開し直すか）を決めてください。PGO・夜間fuzz・カバレッジ閾値・静的lintの整備は別途行います。
+
+## ライセンス
+
+コードは GPL v3（`LICENSE`）です。`internal/kage` は KAGE エンジン（上地宏一、kurgm による TypeScript 版 `@kurgm/kage-engine`、GPL v3）を Go に移植したものです。
 
 ## データのライセンス
 
-KanjiVG © Ulrich Apel / CC BY-SA 3.0、KANJIDIC2 © James William Breen and EDRDG / CC BY-SA 4.0。派生辞書は両データを抽出・変換したものでCC BY-SA 4.0として配布します。KanjiVGから生成したSVGはCC BY-SA 3.0です。
+字形は [GlyphWiki](https://glyphwiki.org/) のデータ（改変・商用を含め自由に利用・再配布可、著作者表示の条件なし）を使います。読みは KANJIDIC2 © James William Breen and EDRDG / CC BY-SA 4.0 です。派生辞書は両データを抽出・変換したものでCC BY-SA 4.0として配布します。
+
+GlyphWikiへ移行する前（2026-09-24以前）に保存された生成字は、KanjiVG © Ulrich Apel / CC BY-SA 3.0 の中心線を描いたSVGで、CC BY-SA 3.0です。その字を表示する画面とOGP画像には KanjiVG の表記を出します。
 
 OGPと画面の文字はNoto Sans CJK JP © Adobe / SIL OFL 1.1をサブセットして使用しています。ライセンス本文は `licenses/` と `internal/render/assets/OFL.txt` にあります。画面のスタイルは98.css © Jordan Scales（MIT、`licenses/98.css.txt`）を使用しています。

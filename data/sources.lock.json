@@ -1,18 +1,25 @@
 {
   "report": {
-    "ambiguousParts": 951,
-    "frameParts": 2,
-    "mergedParts": 880,
-    "partial": 355,
-    "parts": 12855,
-    "sourceCharacters": 6704,
-    "unknownPosition": 808,
-    "withReadings": 12581
+    "frameParts": 36,
+    "glyphs": 11902,
+    "parents": 6458,
+    "parts": 9431,
+    "partsUnresolved": 1,
+    "pinnedVersions": 792,
+    "position:bottom": 289,
+    "position:enclosure": 346,
+    "position:left": 873,
+    "position:right": 1065,
+    "position:top": 400,
+    "position:whole": 6458,
+    "strokesEstimated": 393,
+    "unresolvedRefs": 0,
+    "withReadings": 9384
   },
   "sha256": {
-    "kanjidic2": "8448dd2ec06a637e8180932126c8e7b3826646936a66233284c38e622c8d7903",
-    "kanjivg": "26e2094db1d820c653c3150a8826c02f71e7e8b112fe4f080d290068e9181f85",
-    "overrides": "84a2d05840ec444b44a532f29c2a17fe12c8121ffa750f83e6826ed5eed94aab"
+    "glyphwiki": "67edffab0e177249ae7435487b695a42558ce898a369b718aa5732f72ae5b80a",
+    "kanjidic2": "601de9d3d7100e522e0d3b615973768680c7ec6ad4869874c8361efc8755bf3a",
+    "overrides": "3832039472ab3baa603592c48accde94e76bf94916c3c47efdab5f1d528f9c0a"
   },
-  "version": "26e2094db1d8-8448dd2ec06a-84a2d058"
+  "version": "67edffab0e17-601de9d3d710-38320394"
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"kanji-gacha/config"
 	"kanji-gacha/internal/dict"
+	"kanji-gacha/internal/kage"
 	"kanji-gacha/internal/kana"
 	"kanji-gacha/internal/model"
 	"kanji-gacha/internal/render"
@@ -61,7 +62,7 @@ func (e *Engine) rank(morae []string, mode, okuri string) []candidate {
 	for i := range e.Dict.Parts {
 		p := &e.Dict.Parts[i]
 		// 音符は実在字から選び、置き場所に合う位置別字形は後で引き当てる。
-		if p.Position != "whole" || len(p.Paths) > e.Config.MaxStrokes {
+		if p.Position != "whole" || p.Strokes > e.Config.MaxStrokes {
 			continue
 		}
 		vec, readings := p.OnVector, p.On
@@ -140,9 +141,22 @@ type plan struct {
 	inner   map[*model.Node]model.Box
 }
 
+// placed is a part and the box its Bounds map to, in canvas units.
+type placed struct {
+	part *dict.Part
+	to   model.Box
+}
+
+// bounds is a part's box in canvas units; parts are drawn in the 200×200
+// KAGE frame.
+func (e *Engine) bounds(p *dict.Part) model.Box {
+	k := e.Config.Canvas / kageSize
+	return model.Box{X: p.Bounds.X * k, Y: p.Bounds.Y * k, W: p.Bounds.W * k, H: p.Bounds.H * k}
+}
+
 // fitAspect maps a part into slot, stretching one axis at most maxStretch times
 // the other and centring the rest, so borrowed shapes keep their proportions.
-func fitAspect(p *dict.Part, slot model.Box, maxStretch float64) []model.Stroke {
+func fitAspect(p *dict.Part, slot model.Box, maxStretch float64) placed {
 	sx, sy := slot.W/p.Bounds.W, slot.H/p.Bounds.H
 	to := slot
 	if sx > sy*maxStretch {
@@ -152,24 +166,25 @@ func fitAspect(p *dict.Part, slot model.Box, maxStretch float64) []model.Stroke 
 		to.H = p.Bounds.H * sx * maxStretch
 		to.Y += (slot.H - to.H) / 2
 	}
-	return render.Fit(p.Paths, p.Bounds, to)
+	return placed{p, to}
 }
 
 // sideShare is the fraction of the slot a radical leaf takes along the split
 // axis, derived from its natural proportions (偏は細く、冠は低く).
 func (e *Engine) sideShare(p *dict.Part, horizontal bool, b model.Box) float64 {
 	full := e.Config.Canvas - 2*e.Config.Margin
+	pb := e.bounds(p)
 	if horizontal {
-		hf := math.Min(1, math.Max(0.55, p.Bounds.H/full*1.4))
-		w := b.H * hf * p.Bounds.W / p.Bounds.H
+		hf := math.Min(1, math.Max(0.55, pb.H/full*1.4))
+		w := b.H * hf * pb.W / pb.H
 		return math.Min(0.45, math.Max(0.2, w/(b.W-e.Config.Gap)))
 	}
-	wf := math.Min(1, math.Max(0.6, p.Bounds.W/full*1.3))
-	h := b.W * wf * p.Bounds.H / p.Bounds.W
+	wf := math.Min(1, math.Max(0.6, pb.W/full*1.3))
+	h := b.W * wf * pb.H / pb.W
 	return math.Min(0.42, math.Max(0.18, h/(b.H-e.Config.Gap)))
 }
 
-func (e *Engine) layout(n *model.Node, b model.Box, rng *rand.Rand, pl plan) ([]model.Stroke, float64, error) {
+func (e *Engine) layout(n *model.Node, b model.Box, rng *rand.Rand, pl plan) ([]placed, float64, error) {
 	if b.W <= 0 || b.H <= 0 {
 		return nil, 0, fmt.Errorf("empty slot")
 	}
@@ -180,9 +195,9 @@ func (e *Engine) layout(n *model.Node, b model.Box, rng *rand.Rand, pl plan) ([]
 			return nil, 0, fmt.Errorf("unknown component")
 		}
 		if pl.radical[n] {
-			return fitAspect(p, b, 1.15), penalty, nil
+			return []placed{fitAspect(p, b, 1.15)}, penalty, nil
 		}
-		return fitAspect(p, b, 1.6), penalty, nil
+		return []placed{fitAspect(p, b, 1.6)}, penalty, nil
 	}
 	if len(n.Children) != 2 {
 		return nil, 0, fmt.Errorf("invalid tree")
@@ -214,7 +229,11 @@ func (e *Engine) layout(n *model.Node, b model.Box, rng *rand.Rand, pl plan) ([]
 			}
 			in = *p.Inner
 		}
-		z = model.Box{X: b.X + in.X*b.W, Y: b.Y + in.Y*b.H, W: in.W * b.W, H: in.H * b.H}
+		// The measured room may reach past the frame (辶 lets the inside rise
+		// above its first stroke); keep it within the slot.
+		x0, y0 := math.Max(0, in.X), math.Max(0, in.Y)
+		x1, y1 := math.Min(1, in.X+in.W), math.Min(1, in.Y+in.H)
+		z = model.Box{X: b.X + x0*b.W, Y: b.Y + y0*b.H, W: (x1 - x0) * b.W, H: (y1 - y0) * b.H}
 		p := e.byID[n.Children[0].ComponentID]
 		if p == nil {
 			return nil, 0, fmt.Errorf("unknown component")
@@ -223,7 +242,7 @@ func (e *Engine) layout(n *model.Node, b model.Box, rng *rand.Rand, pl plan) ([]
 		if err != nil {
 			return nil, 0, err
 		}
-		return append(render.Fit(p.Paths, p.Bounds, b), inner...), penalty + pi, nil
+		return append([]placed{{p, b}}, inner...), penalty + pi, nil
 	}
 	left, pa, err := e.layout(n.Children[0], a, rng, pl)
 	if err != nil {
@@ -235,7 +254,8 @@ func (e *Engine) layout(n *model.Node, b model.Box, rng *rand.Rand, pl plan) ([]
 
 type result struct {
 	tree       *model.Node
-	paths      []model.Stroke
+	parts      []placed
+	strokes    int
 	components []model.Component
 	score      float64
 }
@@ -354,14 +374,15 @@ func (e *Engine) attempt(ph candidate, count, depth int, rng *rand.Rand, cores i
 		}
 	}
 	m, c := e.Config.Margin, e.Config.Canvas
-	paths, penalty, err := e.layout(tree, model.Box{X: m, Y: m, W: c - 2*m, H: c - 2*m}, rng, pl)
+	parts, penalty, err := e.layout(tree, model.Box{X: m, Y: m, W: c - 2*m, H: c - 2*m}, rng, pl)
 	if err != nil {
 		return result{}, err
 	}
-	if len(paths) > e.Config.MaxStrokes {
+	n := strokes(parts)
+	if n > e.Config.MaxStrokes {
 		return result{}, fmt.Errorf("stroke limit")
 	}
-	return result{tree: tree, paths: paths, components: cs, score: -penalty}, nil
+	return result{tree: tree, parts: parts, strokes: n, components: cs, score: -penalty}, nil
 }
 func (e *Engine) Generate(ctx context.Context, r kana.Reading, now time.Time) (model.Glyph, error) {
 	var seed [32]byte
@@ -370,7 +391,7 @@ func (e *Engine) Generate(ctx context.Context, r kana.Reading, now time.Time) (m
 	}
 	rng := rand.New(rand.NewChaCha8(seed))
 	rarity := e.Rarity(rng)
-	g := model.Glyph{SchemaVersion: 1, GeneratorVersion: 2, ConfigVersion: e.Config.Version, DictionaryVersion: e.Dict.Version, Key: r.Key(), Reading: r, CreatedAt: now.UTC(), Rarity: rarity.Name, License: render.License, OGPReading: r.Display}
+	g := model.Glyph{SchemaVersion: 1, GeneratorVersion: 3, ConfigVersion: e.Config.Version, DictionaryVersion: e.Dict.Version, Key: r.Key(), Reading: r, CreatedAt: now.UTC(), Rarity: rarity.Name, License: render.License, OGPReading: r.Display}
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(e.Config.TimeoutMs)*time.Millisecond)
 	defer cancel()
 	// Ghost glyphs come from the same pinned dictionary and follow the same storage path.
@@ -403,12 +424,12 @@ func (e *Engine) Generate(ctx context.Context, r kana.Reading, now time.Time) (m
 		}
 		if tree != nil {
 			m, c := e.Config.Margin, e.Config.Canvas
-			paths, _, err := e.layout(tree, model.Box{X: m, Y: m, W: c - 2*m, H: c - 2*m}, rng, plan{})
+			parts, _, err := e.layout(tree, model.Box{X: m, Y: m, W: c - 2*m, H: c - 2*m}, rng, plan{})
 			if err == nil {
 				g.Tree = tree
 				g.IDS = tree.IDS()
-				g.Strokes = len(paths)
-				g.SVG = render.SVG(paths, c, e.Config.StrokeWidth, r.Display+" "+g.IDS)
+				g.Strokes = strokes(parts)
+				g.SVG = e.draw(parts, r.Display+" "+g.IDS)
 				g.Legend = &special
 				g.Rarity = "UR"
 				g.Components = []model.Component{}
@@ -494,7 +515,59 @@ collect:
 	g.Tree = best.tree
 	g.IDS = best.tree.IDS()
 	g.Components = best.components
-	g.Strokes = len(best.paths)
-	g.SVG = render.SVG(best.paths, e.Config.Canvas, e.Config.StrokeWidth, r.Display+" "+g.IDS)
+	g.Strokes = best.strokes
+	g.SVG = e.draw(best.parts, r.Display+" "+g.IDS)
 	return g, nil
+}
+
+// kageSize is the side of the KAGE frame parts are drawn in.
+const kageSize = 200
+
+func strokes(parts []placed) int {
+	n := 0
+	for _, p := range parts {
+		n += p.part.Strokes
+	}
+	return n
+}
+
+// glyph writes the placed parts as KAGE data: one component reference per
+// part, its rectangle chosen so the part's Bounds land on its box. This is
+// the one place canvas units become KAGE units. The engine floors the
+// rectangle to whole units, so a part may move by up to one unit.
+func (e *Engine) glyph(parts []placed) string {
+	lines := make([]string, len(parts))
+	for i, p := range parts {
+		lines[i] = e.line(p)
+	}
+	return strings.Join(lines, "$")
+}
+
+func (e *Engine) line(p placed) string {
+	k := kageSize / e.Config.Canvas
+	b := p.part.Bounds
+	sx, sy := p.to.W*k/b.W, p.to.H*k/b.H
+	x1, y1 := p.to.X*k-b.X*sx, p.to.Y*k-b.Y*sy
+	return fmt.Sprintf("99:0:0:%d:%d:%d:%d:%s", int(math.Round(x1)), int(math.Round(y1)), int(math.Round(x1+kageSize*sx)), int(math.Round(y1+kageSize*sy)), p.part.Glyph)
+}
+
+// draw renders the placed parts in one pass, so the engine adjusts strokes
+// of each part against the others, and returns the SVG. Each part is drawn
+// at a weight from its scale: the engine's strokes have a fixed width, so a
+// part shrunk to a quarter of its design would fill in.
+func (e *Engine) draw(parts []placed, label string) string {
+	k := kageSize / e.Config.Canvas
+	var strokes []kage.Stroke
+	var weights []float64
+	for _, p := range parts {
+		ss := kage.Expand(e.line(p), e.Dict.Lookup)
+		b := p.part.Bounds
+		scale := math.Sqrt(p.to.W * k / b.W * p.to.H * k / b.H)
+		w := math.Min(1, math.Max(0.35, math.Pow(scale, 0.7)))
+		for range ss {
+			weights = append(weights, w)
+		}
+		strokes = append(strokes, ss...)
+	}
+	return render.SVG(kage.RenderWeights(strokes, weights), label)
 }

@@ -8,6 +8,6 @@ build: web
 test:
 	go test -race ./...
 	cd web && pnpm run test -- src
-# Required: KANJIVG=/path/to/kanjivg.zip KANJIDIC=/path/to/kanjidic2.xml.gz
+# Required: GLYPHWIKI=/path/to/dump.tar.gz KANJIDIC=/path/to/kanjidic2.xml.gz
 dict:
-	go run ./cmd/builddict -kanjivg "$(KANJIVG)" -kanjidic "$(KANJIDIC)"
+	go run ./cmd/builddict -glyphwiki "$(GLYPHWIKI)" -kanjidic "$(KANJIDIC)"
