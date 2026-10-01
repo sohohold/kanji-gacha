@@ -26,7 +26,7 @@ docker compose up --build
 
 ローカル専用のMinIO資格情報を `compose.yaml` に記載しています。本番ではIAM実行ロールを使用します。第2フェーズの奉納・DynamoDBはまだ含みません。
 
-## 現在動く機能
+## 機能
 
 - 音／訓の入力（音読みは2モーラ以下）、NFKC・カナ正規化、厳密なJSONと文字列検証。
 - GlyphWikiとKANJIDIC2から構築した辞書、256次元の音特徴、温度付き抽選。読みで選んだ音符1字に、読みと無関係に抽選した意符（偏・冠・脚・垂・繞・構）を重ねる形声文字型の生成。
@@ -84,9 +84,7 @@ GoとTSは `shared/kana-cases.json` の同じ受理／拒否例を検証しま�
 
 ## AWS
 
-[infra/README.md](infra/README.md) に、stateバケット・OIDCデプロイロール・Budgetsを作るbootstrap構成、ECR・Lambda・CloudFront・S3のアプリ構成、GitHub Actionsのデプロイ（`.github/workflows/deploy.yml` と `scripts/deploy.sh`）の手順を記載しています。VPC接続はありません。2026-09-23に両構成を適用し、GitHub Actionsからのデプロイまで動作しています。実環境での確認状況は同READMEの「実環境での確認状況」にあります。費用は仕様書7.2の仮定を実測で更新してください。
-
-残作業：字形の目視調整、NGワード辞書の拡充（現在2語の最小実装）。GlyphWikiへの移行（2026-09-24）の後は、デプロイして `Init Duration` と `Max Memory Used` を移行前（0.63〜0.81秒、約240MB）と比べること、`docker compose` での起動（MinIO経由の保存と旧形式の字の表示）を確かめることが残っています。手元の計測では辞書の読み込みが約0.5〜0.7秒から約0.09秒に、確保するメモリが約288MBから約79MBになりました。部品数の多い字（SR以上）で部品が点のように小さくなることがあり、配置の計算は見直しの余地があります。リポジトリを public にするときは、git の過去の履歴に残るAWSのアカウントIDと本番ドメインの扱い（履歴から消すか、新しいリポジトリとして公開し直すか）を決めてください。PGO・夜間fuzz・カバレッジ閾値・静的lintの整備は別途行います。
+[infra/README.md](infra/README.md) に、stateバケット・OIDCデプロイロール・Budgetsを作るbootstrap構成、ECR・Lambda・CloudFront・S3のアプリ構成、GitHub Actionsのデプロイ（`.github/workflows/deploy.yml` と `scripts/deploy.sh`）の手順を記載しています。2026-09-23に両構成を適用し、GitHub Actionsからのデプロイまで動作しています。費用は仕様書7.2の仮定を実測で更新してください。
 
 ## ライセンス
 

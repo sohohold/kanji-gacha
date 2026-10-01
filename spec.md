@@ -407,30 +407,25 @@ TDD は、依存の少ない純関数から外側へ向かう順で進める。�
 | `deploy.yml` | main への push（CI成功後） | Terraform plan/apply（OIDC）、イメージを ECR へ push して Lambda 更新、S3 同期、CloudFront 無効化 |
 | `fuzz-nightly.yml` | 毎日 | fuzz を 10分実行し、見つかったコーパスを Issue 化 |
 
-## 9. Go の強みを活かす設計と技術記事ネタ
+## 9. パッケージ構成
 
-記事の主題は「辞書・計算・画像生成をGoの単一バイナリにまとめ、結果をS3へ保存する」とする。どの要素も、計測値（コールドスタート時間、p99 レイテンシ、バイナリサイズ）と一緒に書ける構成にしておく。
+パッケージは次のように分ける。
 
-| Go の要素 | 本プロジェクトでの使い方 | 記事の切り口 |
-| --- | --- | --- |
-| `go:embed` + `sync.OnceValue` | 辞書バイナリを同梱し、初回アクセス時に遅延デコード | DB なしのデータ API。embed のサイズとコールドスタートの関係を計測 |
-| `math/rand/v2` の ChaCha8 | 抽選・候補探索。乱数生成器は候補ワーカーごとに持つ | 非決定的な探索のテストと、乱数注入 |
-| goroutine + `errgroup` + `context` | レアリティ内で N 個の候補を並列生成し、200ms の予算内で最良のものを返す（anytime 方式） | 時間予算付きの並列探索。Lambda の vCPU 数（メモリ設定に比例）と GOMAXPROCS の実測 |
-| `testing/synctest` | タイムアウトとキャンセルのテストを、実時間を待たずに決定的に行う | 時間依存コードの TDD |
-| `iter.Seq` とジェネリクス | 分節候補のストリームと汎用の top-k ヒープ | range-over-func の実用例 |
-| fuzzing | 正規化と IDS パーサ、レイアウト木の不変条件 | ネイティブ fuzzing で見つかったバグの事例 |
-| pure Go ラスタライズ（`CGO_ENABLED=0`） | SVG→PNG の OGP 生成を cgo なしで行う | 静的バイナリ・arm64 クロスコンパイル・コンテナイメージのサイズ |
-| PGO（`default.pgo`） | 本番のプロファイルでビルドを最適化 | PGO の前後でのレイテンシ比較 |
-
-パッケージは `cmd/api`（サーバー）、`cmd/builddict`（辞書構築）、`internal/kana`、`internal/vector`、`internal/compose`、`internal/render`、`internal/glyphid`、`internal/store` に分ける。入力・スコア・合成のコアはHTTP/AWSから独立させ、乱数・時計・設定を引数で受ける。S3のI/Oは `internal/store` に隔離する。こうするとテストしやすく、記事でもコードを抜き出しやすい。
-
-## 10. 不足要素と未決事項
-
-依頼時点の要件で抜けていた要素のうち、最も重いのはデータのライセンスである。字形は GlyphWiki のデータ（自由に利用・再配布でき、表示の条件なし）を GPL v3 の KAGE エンジンで描く。リポジトリのコードは GPL v3 とする。KANJIDIC2 は EDRDG ライセンス（CC BY-SA 4.0）で配布されている。KanjiVG（CC BY-SA 3.0）を使っていたころの保存済みの生成字は KanjiVG の二次的著作物なので、それを表示する画面と OGP 画像には KanjiVG の表記を残す。外部の IDS データセットは同梱せず、IDS は自分で生成した配置木からのみ出力する。
-
-| 不足要素 | 内容と対応案 |
+| パッケージ | 役割 |
 | --- | --- |
-| ライセンス表記 | 上記のとおり。フッターと OGP 画像の隅に GlyphWiki・KAGE（GPL v3）・KANJIDIC2・Noto CJK を表記し、旧形式の字では KanjiVG を加える |
-| 都市伝説枠の描画 | 彁・妛・雲・龍は GlyphWiki に収録されている。ビルド時に全体字形の存在を確認する。 |
-| 不適切な読み | 読みはシェアページと OGP にそのまま出る。OGP の文字列と奉納には NG ワード辞書を適用する（生成そのものは止めない） |
-| 法務ページ | 利用規約、ライセンス表記、生成確率の開示（無償なので義務ではないが、ガチャとして誠実） |
+| `cmd/api` | サーバーの起動。設定・辞書・S3・ハンドラを組み立てる |
+| `cmd/builddict` | 辞書の構築（3.1） |
+| `config` | `config/generator.json` の読み込みと検証（3.6） |
+| `internal/kana` | 入力の正規化と検証（2章） |
+| `internal/vector` | 読みのベクトル化（3.2） |
+| `internal/dict` | 辞書の型・構築処理と、`go:embed` で同梱した辞書の読み込み |
+| `internal/compose` | 抽選・部品選択・レイアウト木・候補探索（3.3〜3.7） |
+| `internal/kage` | KAGE エンジンの Go 移植（GPL v3） |
+| `internal/render` | SVG の出力・読み戻しと、OGP の PNG 描画 |
+| `internal/model` | 結果レコードや配置木など、パッケージ間で共有する型 |
+| `internal/glyphid` | グリフ ID の発行（4.1） |
+| `internal/store` | S3 への保存・取得 |
+| `internal/httpapi` | HTTP ハンドラ、レート制限、エラー応答（5章） |
+| `internal/metrics` | CloudWatch の埋め込みメトリクス形式（EMF）でのログ出力 |
+
+入力・スコア・合成のコアはHTTP/AWSから独立させ、乱数・時計・設定を引数で受ける。S3のI/Oは `internal/store` に、HTTPは `internal/httpapi` に隔離し、コアを単体でテストできるようにする。

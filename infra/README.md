@@ -204,21 +204,3 @@ Lambda実行ロールは権限境界 `kanji-gacha-lambda-boundary` を付けた�
 アプリ側のIAMは結果バケットの `glyphs/*` と `og/*` のGet/Put、および404判定に必要な限定的ListBucketを許可します。Lambdaへの呼び出し権限は対象CloudFront distribution ARNに限定します。
 
 結果JSON・PNGには削除ライフサイクルを設定していません。S3をSPA同期先と結果保存先で分けているため、フロントの同期が生成結果を削除することはありません。
-
-## 未確認の事項
-
-- レート制限が閲覧者ごとに分かれていること。制限は生成（POST）だけに掛かり、閲覧者ごとに最大10回まで続けて生成でき、1秒に1回分ずつ回復します（トークンバケット）。閲覧者はIPv4ならアドレス、IPv6なら/64で区別します。バケットはLambdaのインスタンスごとのメモリにあるため、同時に動くインスタンス（`reserved_concurrent_executions` により最大10）の間では共有されず、インスタンスが入れ替わると初期化されます。1台から続けて生成すると11回目前後で429になることは確認済みです（2026-09-25）。残っているのは、別の閲覧者が巻き込まれないことの確認です。`CloudFront-Viewer-Address` が届いていなければ全員が1つのバケットを共有します。
-
-  1秒で1回分回復するため、429が出た後に別の端末で試すだけでは、共有していても成功してしまいます。下のコマンドで約20秒間バケットを空に保ち、その間に別の回線（携帯回線など）の端末のブラウザで2〜3回生成してください。そちらが成功すれば分かれています（共有していればほぼ429になります）。別端末の要求が別のインスタンスに振り分けられると共有していても成功するので、その時間帯に `aws logs filter-log-events --log-group-name /aws/lambda/kanji-gacha --filter-pattern '"Init Duration"' --start-time <開始時刻のミリ秒>` でコールドスタートが記録されていないことも見ます。このコマンドは結果を30件ほど保存します。
-
-```bash
-url="$(terraform -chdir=infra output -raw base_url)/api/v1/glyphs"
-body='{"mode":"on","reading":"セイ"}'
-hash=$(printf '%s' "$body" | sha256sum | cut -d' ' -f1)
-date +%s000   # 開始時刻（ミリ秒）
-for i in $(seq 45); do
-  curl -s -o /dev/null -w '%{http_code} ' -X POST -H 'Content-Type: application/json' \
-    -H "x-amz-content-sha256: $hash" --data-binary "$body" "$url"
-  sleep 0.3
-done; echo
-```
