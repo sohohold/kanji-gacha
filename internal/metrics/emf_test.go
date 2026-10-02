@@ -19,6 +19,7 @@ func record(t *testing.T, line string) map[string]any {
 	return v
 }
 
+// Test ID: MET-01
 func TestGeneratedRecord(t *testing.T) {
 	var buf bytes.Buffer
 	m := NewEMF(&buf, "KanjiGacha")
@@ -56,6 +57,7 @@ func TestGeneratedRecord(t *testing.T) {
 	}
 }
 
+// Test ID: MET-02
 func TestGenerationFailedRecord(t *testing.T) {
 	var buf bytes.Buffer
 	m := NewEMF(&buf, "KanjiGacha")
@@ -77,6 +79,7 @@ func TestGenerationFailedRecord(t *testing.T) {
 	}
 }
 
+// Test ID: MET-03
 func TestNilRecordsNothing(t *testing.T) {
 	var m *EMF
 	m.Generated(time.Second, "N", false)
@@ -95,6 +98,7 @@ func (w *lineWriter) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
+// Test ID: MET-04
 func TestConcurrentWritesStayWhole(t *testing.T) {
 	w := &lineWriter{}
 	m := NewEMF(w, "KanjiGacha")

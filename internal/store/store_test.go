@@ -16,6 +16,7 @@ import (
 	"testing"
 )
 
+// Test ID: STO-01
 func TestAtomicPublication(t *testing.T) {
 	s := Local{Dir: t.TempDir()}
 	ctx := context.Background()
@@ -76,6 +77,8 @@ func s3Replies(t *testing.T, replies ...[2]string) (*S3, *atomic.Int32) {
 		Credentials: credentials.NewStaticCredentialsProvider("id", "secret", "")})
 	return &S3{Client: client, Bucket: "b"}, &puts
 }
+
+// Test ID: STO-02
 func TestS3RetriesWriteConflict(t *testing.T) {
 	k := "og/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png"
 	for _, c := range []struct {

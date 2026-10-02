@@ -39,9 +39,12 @@ type Server struct {
 	TrustCloudFront   bool
 	Metrics           *metrics.EMF
 	Now               func() time.Time
-	mu                sync.Mutex
-	ips               map[string]bucket
-	index             []byte
+	// OGPRender limits drawing one OGP image (spec 4.2); the request also
+	// gets 5s on top for the S3 round trips.
+	OGPRender time.Duration
+	mu        sync.Mutex
+	ips       map[string]bucket
+	index     []byte
 }
 
 func New(engine *compose.Engine, st store.Store, base, web string) (*Server, error) {
@@ -49,7 +52,7 @@ func New(engine *compose.Engine, st store.Store, base, web string) (*Server, err
 	if e != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.RawQuery != "" || u.Fragment != "" {
 		return nil, fmt.Errorf("BASE_URL must be an absolute http(s) URL")
 	}
-	s := &Server{Engine: engine, Store: st, BaseURL: strings.TrimRight(base, "/"), WebDir: web, GenerationEnabled: true, Now: time.Now, ips: map[string]bucket{}}
+	s := &Server{Engine: engine, Store: st, BaseURL: strings.TrimRight(base, "/"), WebDir: web, GenerationEnabled: true, Now: time.Now, OGPRender: 3 * time.Second, ips: map[string]bucket{}}
 	s.index, e = os.ReadFile(filepath.Join(web, "index.html"))
 	if e != nil {
 		return nil, fmt.Errorf("build the frontend first: %w", e)
@@ -395,8 +398,8 @@ func (s *Server) og(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The request budget covers the S3 round trips; only the rendering itself is
-	// held to the 3s limit.
-	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	// held to the OGPRender limit.
+	ctx, cancel := context.WithTimeout(r.Context(), s.OGPRender+5*time.Second)
 	defer cancel()
 	r = r.WithContext(ctx)
 	key := "og/" + id + ".png"
@@ -407,7 +410,7 @@ func (s *Server) og(w http.ResponseWriter, r *http.Request) {
 			problem(w, status, code, nil)
 			return
 		}
-		rctx, rcancel := context.WithTimeout(ctx, 3*time.Second)
+		rctx, rcancel := context.WithTimeout(ctx, s.OGPRender)
 		b, e = render.PNG(rctx, g)
 		rcancel()
 		if e == nil {

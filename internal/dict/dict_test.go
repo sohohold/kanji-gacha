@@ -6,6 +6,7 @@ import (
 	"testing"
 )
 
+// Test ID: DICT-04
 // The bundled dictionary must carry every asset the special slots draw from;
 // Build enforces this, and this guards the artifact that ships.
 func TestBundledSpecialAssets(t *testing.T) {
@@ -32,6 +33,8 @@ func TestBundledSpecialAssets(t *testing.T) {
 		t.Error("no frame part with both inner and operator")
 	}
 }
+
+// Test ID: DICT-05
 func TestVerifySpecials(t *testing.T) {
 	d, e := Load()
 	if e != nil {
@@ -57,6 +60,7 @@ func TestVerifySpecials(t *testing.T) {
 	}
 }
 
+// Test ID: DICT-06
 // gob writes maps in iteration order; Encode must still give the same bytes
 // for the same dictionary, or every rebuild shows a spurious diff.
 func TestEncodeRoundTrip(t *testing.T) {
@@ -87,6 +91,7 @@ func TestEncodeRoundTrip(t *testing.T) {
 	}
 }
 
+// Test ID: DICT-07
 // Every glyph a part draws with, and every glyph those reference, ships in
 // the dictionary; a missing one would silently drop strokes.
 func TestBundledGlyphsComplete(t *testing.T) {
@@ -120,5 +125,18 @@ func BenchmarkDecode(b *testing.B) {
 		if _, e := Decode(bundled); e != nil {
 			b.Fatal(e)
 		}
+	}
+}
+
+// Test ID: DICT-13
+// The shipped dictionary is built over the 6,458 parents spec 3.1 states;
+// a rebuild that changes the count must update the spec with it.
+func TestBundledParents(t *testing.T) {
+	d, e := Load()
+	if e != nil {
+		t.Fatal(e)
+	}
+	if d.Report["parents"] != 6458 || d.Report["parentsMissing"] != 0 {
+		t.Fatalf("%d parents, %d missing", d.Report["parents"], d.Report["parentsMissing"])
 	}
 }

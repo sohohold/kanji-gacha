@@ -1,5 +1,44 @@
 [
   {
+    "id": "IN-01",
+    "name": "mode",
+    "input": {
+      "mode": "other",
+      "reading": "ア",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "enum",
+    "field": "mode"
+  },
+  {
+    "id": "IN-02",
+    "name": "on-okuri",
+    "input": {
+      "mode": "on",
+      "reading": "セイ",
+      "okurigana": "イ"
+    },
+    "valid": false,
+    "code": "length",
+    "field": "okurigana"
+  },
+  {
+    "id": "IN-03",
+    "name": "okuri-kanji-on",
+    "input": {
+      "mode": "on",
+      "reading": "セイ",
+      "okurigana": "漢"
+    },
+    "valid": false,
+    "code": "character",
+    "field": "okurigana",
+    "position": 0,
+    "normalized": "漢"
+  },
+  {
+    "id": "IN-04",
     "name": "halfwidth",
     "input": {
       "mode": "on",
@@ -13,6 +52,7 @@
     ]
   },
   {
+    "id": "IN-05",
     "name": "dakuten",
     "input": {
       "mode": "on",
@@ -26,6 +66,7 @@
     ]
   },
   {
+    "id": "IN-06",
     "name": "vu",
     "input": {
       "mode": "on",
@@ -39,20 +80,7 @@
     ]
   },
   {
-    "name": "long",
-    "input": {
-      "mode": "on",
-      "reading": "ソー",
-      "okurigana": ""
-    },
-    "valid": true,
-    "normalized": "ソー",
-    "morae": [
-      "ソ",
-      "ー"
-    ]
-  },
-  {
+    "id": "IN-07",
     "name": "tokyo",
     "input": {
       "mode": "kun",
@@ -69,6 +97,102 @@
     ]
   },
   {
+    "id": "IN-08",
+    "name": "kun",
+    "input": {
+      "mode": "kun",
+      "reading": "あお",
+      "okurigana": "い"
+    },
+    "valid": true,
+    "normalized": "アオ",
+    "morae": [
+      "ア",
+      "オ"
+    ]
+  },
+  {
+    "id": "IN-09",
+    "name": "kanji-over-length",
+    "input": {
+      "mode": "on",
+      "reading": "漢字漢字漢字",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "character",
+    "field": "reading",
+    "position": 0,
+    "normalized": "漢字漢字漢字"
+  },
+  {
+    "id": "IN-10",
+    "name": "latin-over-length",
+    "input": {
+      "mode": "on",
+      "reading": "abcdef",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "character",
+    "field": "reading",
+    "position": 0,
+    "normalized": "abcdef"
+  },
+  {
+    "id": "IN-11",
+    "name": "okuri-over-length-kanji",
+    "input": {
+      "mode": "kun",
+      "reading": "ア",
+      "okurigana": "漢漢漢漢"
+    },
+    "valid": false,
+    "code": "character",
+    "field": "okurigana",
+    "position": 0,
+    "normalized": "漢漢漢漢"
+  },
+  {
+    "id": "IN-12",
+    "name": "space",
+    "input": {
+      "mode": "on",
+      "reading": " カ",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "character",
+    "field": "reading",
+    "position": 0,
+    "normalized": " カ"
+  },
+  {
+    "id": "IN-13",
+    "name": "empty",
+    "input": {
+      "mode": "on",
+      "reading": "",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "length",
+    "field": "reading"
+  },
+  {
+    "id": "IN-14",
+    "name": "six",
+    "input": {
+      "mode": "on",
+      "reading": "アイウエオカ",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "length",
+    "field": "reading"
+  },
+  {
+    "id": "IN-15",
     "name": "five",
     "input": {
       "mode": "kun",
@@ -86,304 +210,7 @@
     ]
   },
   {
-    "name": "last-tsu",
-    "input": {
-      "mode": "on",
-      "reading": "アッ",
-      "okurigana": ""
-    },
-    "valid": true,
-    "normalized": "アッ",
-    "morae": [
-      "ア",
-      "ッ"
-    ]
-  },
-  {
-    "name": "double-long",
-    "input": {
-      "mode": "kun",
-      "reading": "アーー",
-      "okurigana": ""
-    },
-    "valid": true,
-    "normalized": "アーー",
-    "morae": [
-      "ア",
-      "ー",
-      "ー"
-    ]
-  },
-  {
-    "name": "small-te",
-    "input": {
-      "mode": "on",
-      "reading": "ティ",
-      "okurigana": ""
-    },
-    "valid": true,
-    "normalized": "ティ",
-    "morae": [
-      "ティ"
-    ]
-  },
-  {
-    "name": "kun",
-    "input": {
-      "mode": "kun",
-      "reading": "あお",
-      "okurigana": "い"
-    },
-    "valid": true,
-    "normalized": "アオ",
-    "morae": [
-      "ア",
-      "オ"
-    ]
-  },
-  {
-    "name": "empty",
-    "input": {
-      "mode": "on",
-      "reading": "",
-      "okurigana": ""
-    },
-    "valid": false,
-    "code": "length",
-    "field": "reading"
-  },
-  {
-    "name": "six",
-    "input": {
-      "mode": "on",
-      "reading": "アイウエオカ",
-      "okurigana": ""
-    },
-    "valid": false,
-    "code": "length",
-    "field": "reading"
-  },
-  {
-    "name": "space",
-    "input": {
-      "mode": "on",
-      "reading": " カ",
-      "okurigana": ""
-    },
-    "valid": false,
-    "code": "character",
-    "field": "reading"
-  },
-  {
-    "name": "kanji",
-    "input": {
-      "mode": "on",
-      "reading": "漢字",
-      "okurigana": ""
-    },
-    "valid": false,
-    "code": "character",
-    "field": "reading"
-  },
-  {
-    "name": "leading-small",
-    "input": {
-      "mode": "on",
-      "reading": "ャク",
-      "okurigana": ""
-    },
-    "valid": false,
-    "code": "leading",
-    "field": "reading"
-  },
-  {
-    "name": "leading-n",
-    "input": {
-      "mode": "on",
-      "reading": "ンア",
-      "okurigana": ""
-    },
-    "valid": false,
-    "code": "leading",
-    "field": "reading"
-  },
-  {
-    "name": "leading-long",
-    "input": {
-      "mode": "on",
-      "reading": "ーア",
-      "okurigana": ""
-    },
-    "valid": false,
-    "code": "leading",
-    "field": "reading"
-  },
-  {
-    "name": "leading-tsu",
-    "input": {
-      "mode": "on",
-      "reading": "ッア",
-      "okurigana": ""
-    },
-    "valid": false,
-    "code": "leading",
-    "field": "reading"
-  },
-  {
-    "name": "small-chain",
-    "input": {
-      "mode": "on",
-      "reading": "キョャ",
-      "okurigana": ""
-    },
-    "valid": false,
-    "code": "small_kana",
-    "field": "reading"
-  },
-  {
-    "name": "tsu-long",
-    "input": {
-      "mode": "on",
-      "reading": "カッー",
-      "okurigana": ""
-    },
-    "valid": false,
-    "code": "sequence",
-    "field": "reading"
-  },
-  {
-    "name": "n-long",
-    "input": {
-      "mode": "on",
-      "reading": "カンー",
-      "okurigana": ""
-    },
-    "valid": false,
-    "code": "sequence",
-    "field": "reading"
-  },
-  {
-    "name": "tsu-n",
-    "input": {
-      "mode": "on",
-      "reading": "カッン",
-      "okurigana": ""
-    },
-    "valid": false,
-    "code": "sequence",
-    "field": "reading"
-  },
-  {
-    "name": "standalone",
-    "input": {
-      "mode": "on",
-      "reading": "゛",
-      "okurigana": ""
-    },
-    "valid": false,
-    "code": "character",
-    "field": "reading"
-  },
-  {
-    "name": "small-wa",
-    "input": {
-      "mode": "on",
-      "reading": "クヮ",
-      "okurigana": ""
-    },
-    "valid": false,
-    "code": "character",
-    "field": "reading"
-  },
-  {
-    "name": "latin",
-    "input": {
-      "mode": "on",
-      "reading": "abc",
-      "okurigana": ""
-    },
-    "valid": false,
-    "code": "character",
-    "field": "reading"
-  },
-  {
-    "name": "emoji",
-    "input": {
-      "mode": "on",
-      "reading": "😀",
-      "okurigana": ""
-    },
-    "valid": false,
-    "code": "character",
-    "field": "reading"
-  },
-  {
-    "name": "replacement",
-    "input": {
-      "mode": "on",
-      "reading": "�",
-      "okurigana": ""
-    },
-    "valid": false,
-    "code": "character",
-    "field": "reading"
-  },
-  {
-    "name": "invalid-small",
-    "input": {
-      "mode": "on",
-      "reading": "アャ",
-      "okurigana": ""
-    },
-    "valid": false,
-    "code": "small_kana",
-    "field": "reading"
-  },
-  {
-    "name": "repeat",
-    "input": {
-      "mode": "on",
-      "reading": "クヽ",
-      "okurigana": ""
-    },
-    "valid": false,
-    "code": "character",
-    "field": "reading"
-  },
-  {
-    "name": "on-okuri",
-    "input": {
-      "mode": "on",
-      "reading": "セイ",
-      "okurigana": "イ"
-    },
-    "valid": false,
-    "code": "length",
-    "field": "okurigana"
-  },
-  {
-    "name": "okuri-small",
-    "input": {
-      "mode": "kun",
-      "reading": "キャ",
-      "okurigana": "ャ"
-    },
-    "valid": false,
-    "code": "leading",
-    "field": "okurigana"
-  },
-  {
-    "name": "total-seven",
-    "input": {
-      "mode": "kun",
-      "reading": "アイウエオ",
-      "okurigana": "カキ"
-    },
-    "valid": false,
-    "code": "total_length",
-    "field": "okurigana"
-  },
-  {
+    "id": "IN-16",
     "name": "okuri-four",
     "input": {
       "mode": "kun",
@@ -395,6 +222,7 @@
     "field": "okurigana"
   },
   {
+    "id": "IN-17",
     "name": "total-six",
     "input": {
       "mode": "kun",
@@ -412,61 +240,317 @@
     ]
   },
   {
-    "name": "mode",
-    "input": {
-      "mode": "other",
-      "reading": "ア",
-      "okurigana": ""
-    },
-    "valid": false,
-    "code": "enum",
-    "field": "mode"
-  },
-  {
-    "name": "kanji-over-length",
-    "input": {
-      "mode": "on",
-      "reading": "漢字漢字漢字",
-      "okurigana": ""
-    },
-    "valid": false,
-    "code": "character",
-    "field": "reading"
-  },
-  {
-    "name": "latin-over-length",
-    "input": {
-      "mode": "on",
-      "reading": "abcdef",
-      "okurigana": ""
-    },
-    "valid": false,
-    "code": "character",
-    "field": "reading"
-  },
-  {
-    "name": "okuri-kanji-on",
-    "input": {
-      "mode": "on",
-      "reading": "セイ",
-      "okurigana": "漢"
-    },
-    "valid": false,
-    "code": "character",
-    "field": "okurigana"
-  },
-  {
-    "name": "okuri-over-length-kanji",
+    "id": "IN-18",
+    "name": "total-seven",
     "input": {
       "mode": "kun",
-      "reading": "ア",
-      "okurigana": "漢漢漢漢"
+      "reading": "アイウエオ",
+      "okurigana": "カキ"
     },
     "valid": false,
-    "code": "character",
+    "code": "total_length",
     "field": "okurigana"
   },
   {
+    "id": "IN-19",
+    "name": "kanji",
+    "input": {
+      "mode": "on",
+      "reading": "漢字",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "character",
+    "field": "reading",
+    "position": 0,
+    "normalized": "漢字"
+  },
+  {
+    "id": "IN-20",
+    "name": "latin",
+    "input": {
+      "mode": "on",
+      "reading": "abc",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "character",
+    "field": "reading",
+    "position": 0,
+    "normalized": "abc"
+  },
+  {
+    "id": "IN-21",
+    "name": "emoji",
+    "input": {
+      "mode": "on",
+      "reading": "😀",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "character",
+    "field": "reading",
+    "position": 0,
+    "normalized": "😀"
+  },
+  {
+    "id": "IN-22",
+    "name": "replacement",
+    "input": {
+      "mode": "on",
+      "reading": "�",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "character",
+    "field": "reading",
+    "position": 0,
+    "normalized": "�"
+  },
+  {
+    "id": "IN-23",
+    "name": "standalone",
+    "input": {
+      "mode": "on",
+      "reading": "゛",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "character",
+    "field": "reading",
+    "position": 0,
+    "normalized": " ゙"
+  },
+  {
+    "id": "IN-24",
+    "name": "small-wa",
+    "input": {
+      "mode": "on",
+      "reading": "クヮ",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "character",
+    "field": "reading",
+    "position": 1,
+    "normalized": "クヮ"
+  },
+  {
+    "id": "IN-25",
+    "name": "repeat",
+    "input": {
+      "mode": "on",
+      "reading": "クヽ",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "character",
+    "field": "reading",
+    "position": 1,
+    "normalized": "クヽ"
+  },
+  {
+    "id": "IN-26",
+    "name": "leading-small",
+    "input": {
+      "mode": "on",
+      "reading": "ャク",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "leading",
+    "field": "reading",
+    "position": 0,
+    "normalized": "ャク"
+  },
+  {
+    "id": "IN-27",
+    "name": "leading-n",
+    "input": {
+      "mode": "on",
+      "reading": "ンア",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "leading",
+    "field": "reading",
+    "position": 0,
+    "normalized": "ンア"
+  },
+  {
+    "id": "IN-28",
+    "name": "leading-long",
+    "input": {
+      "mode": "on",
+      "reading": "ーア",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "leading",
+    "field": "reading",
+    "position": 0,
+    "normalized": "ーア"
+  },
+  {
+    "id": "IN-29",
+    "name": "leading-tsu",
+    "input": {
+      "mode": "on",
+      "reading": "ッア",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "leading",
+    "field": "reading",
+    "position": 0,
+    "normalized": "ッア"
+  },
+  {
+    "id": "IN-30",
+    "name": "okuri-small",
+    "input": {
+      "mode": "kun",
+      "reading": "キャ",
+      "okurigana": "ャ"
+    },
+    "valid": false,
+    "code": "leading",
+    "field": "okurigana",
+    "position": 0,
+    "normalized": "ャ"
+  },
+  {
+    "id": "IN-31",
+    "name": "small-te",
+    "input": {
+      "mode": "on",
+      "reading": "ティ",
+      "okurigana": ""
+    },
+    "valid": true,
+    "normalized": "ティ",
+    "morae": [
+      "ティ"
+    ]
+  },
+  {
+    "id": "IN-32",
+    "name": "invalid-small",
+    "input": {
+      "mode": "on",
+      "reading": "アャ",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "small_kana",
+    "field": "reading",
+    "position": 1,
+    "normalized": "アャ"
+  },
+  {
+    "id": "IN-33",
+    "name": "small-chain",
+    "input": {
+      "mode": "on",
+      "reading": "キョャ",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "small_kana",
+    "field": "reading",
+    "position": 2,
+    "normalized": "キョャ"
+  },
+  {
+    "id": "IN-34",
+    "name": "long",
+    "input": {
+      "mode": "on",
+      "reading": "ソー",
+      "okurigana": ""
+    },
+    "valid": true,
+    "normalized": "ソー",
+    "morae": [
+      "ソ",
+      "ー"
+    ]
+  },
+  {
+    "id": "IN-35",
+    "name": "double-long",
+    "input": {
+      "mode": "kun",
+      "reading": "アーー",
+      "okurigana": ""
+    },
+    "valid": true,
+    "normalized": "アーー",
+    "morae": [
+      "ア",
+      "ー",
+      "ー"
+    ]
+  },
+  {
+    "id": "IN-36",
+    "name": "last-tsu",
+    "input": {
+      "mode": "on",
+      "reading": "アッ",
+      "okurigana": ""
+    },
+    "valid": true,
+    "normalized": "アッ",
+    "morae": [
+      "ア",
+      "ッ"
+    ]
+  },
+  {
+    "id": "IN-37",
+    "name": "tsu-long",
+    "input": {
+      "mode": "on",
+      "reading": "カッー",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "sequence",
+    "field": "reading",
+    "position": 2,
+    "normalized": "カッー"
+  },
+  {
+    "id": "IN-38",
+    "name": "n-long",
+    "input": {
+      "mode": "on",
+      "reading": "カンー",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "sequence",
+    "field": "reading",
+    "position": 2,
+    "normalized": "カンー"
+  },
+  {
+    "id": "IN-39",
+    "name": "tsu-n",
+    "input": {
+      "mode": "on",
+      "reading": "カッン",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "sequence",
+    "field": "reading",
+    "position": 2,
+    "normalized": "カッン"
+  },
+  {
+    "id": "IN-40",
     "name": "on-two-morae-yoon",
     "input": {
       "mode": "on",
@@ -481,6 +565,7 @@
     ]
   },
   {
+    "id": "IN-41",
     "name": "on-three-morae",
     "input": {
       "mode": "on",
@@ -492,6 +577,7 @@
     "code": "morae"
   },
   {
+    "id": "IN-42",
     "name": "on-three-long",
     "input": {
       "mode": "on",
@@ -503,6 +589,7 @@
     "code": "morae"
   },
   {
+    "id": "IN-43",
     "name": "on-three-plain",
     "input": {
       "mode": "on",
@@ -512,5 +599,83 @@
     "valid": false,
     "field": "reading",
     "code": "morae"
+  },
+  {
+    "id": "IN-44",
+    "name": "length-before-sequence",
+    "input": {
+      "mode": "on",
+      "reading": "ーーーーーー",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "length",
+    "field": "reading"
+  },
+  {
+    "id": "IN-45",
+    "name": "kun-six",
+    "input": {
+      "mode": "kun",
+      "reading": "アイウエオカ",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "length",
+    "field": "reading"
+  },
+  {
+    "id": "IN-46",
+    "name": "count-codepoints",
+    "input": {
+      "mode": "on",
+      "reading": "キャキャキャ",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "length",
+    "field": "reading"
+  },
+  {
+    "id": "IN-47",
+    "name": "middle-dot",
+    "input": {
+      "mode": "on",
+      "reading": "ア・イ",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "character",
+    "field": "reading",
+    "position": 1,
+    "normalized": "ア・イ"
+  },
+  {
+    "id": "IN-48",
+    "name": "small-ka",
+    "input": {
+      "mode": "on",
+      "reading": "カヵ",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "character",
+    "field": "reading",
+    "position": 1,
+    "normalized": "カヵ"
+  },
+  {
+    "id": "IN-49",
+    "name": "tsu-tsu",
+    "input": {
+      "mode": "on",
+      "reading": "カッッ",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "sequence",
+    "field": "reading",
+    "position": 2,
+    "normalized": "カッッ"
   }
 ]

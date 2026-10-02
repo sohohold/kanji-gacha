@@ -5,6 +5,7 @@ import (
 	"testing"
 )
 
+// Test ID: VEC-01
 func TestSimilarity(t *testing.T) {
 	a := Reading("セイ")
 	if math.Abs(Cos(a, a)-1) > 1e-5 {
@@ -12,5 +13,8 @@ func TestSimilarity(t *testing.T) {
 	}
 	if Cos(a, Reading("ゼイ")) <= Cos(a, Reading("ハク")) {
 		t.Fatal("phonetic proximity lost")
+	}
+	if b := Reading("ショウ"); Cos(b, Reading("ソウ")) <= Cos(b, Reading("ハク")) {
+		t.Fatal("ショウ is not closer to ソウ than to ハク")
 	}
 }

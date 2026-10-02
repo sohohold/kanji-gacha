@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-test("generate, share, reload the same SVG, and retrieve OGP", async ({
+test("E2E-01 generate, share, reload the same SVG, and retrieve OGP", async ({
   page,
   request,
 }) => {
@@ -28,7 +28,9 @@ test("generate, share, reload the same SVG, and retrieve OGP", async ({
   await expect(page.locator(".glyph")).toHaveCount(1);
   expect(await page.locator(".glyph").innerHTML()).toBe(svg);
 });
-test("reject invalid input and preserve IME composition", async ({ page }) => {
+test("E2E-02 reject invalid input and preserve IME composition", async ({
+  page,
+}) => {
   await page.goto("/");
   await page.getByRole("tab", { name: "音読み" }).click();
   const input = page.getByRole("textbox", { name: "読み", exact: true });
@@ -50,7 +52,7 @@ test("reject invalid input and preserve IME composition", async ({ page }) => {
     page.getByRole("button", { name: "ガチャを回す" }),
   ).toBeEnabled();
 });
-test("kun input on mobile", async ({ page }) => {
+test("E2E-03 kun input on mobile", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await expect(page.getByRole("tab", { name: "訓読み" })).toHaveAttribute(
@@ -73,7 +75,7 @@ test("kun input on mobile", async ({ page }) => {
     ),
   ).toBeTruthy();
 });
-test("unknown share link has an error", async ({ page }) => {
+test("E2E-04 unknown share link has an error", async ({ page }) => {
   const res = await page.goto("/g/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
   expect(res?.status()).toBe(404);
   await expect(
@@ -82,7 +84,7 @@ test("unknown share link has an error", async ({ page }) => {
       .filter({ hasText: "生成結果が見つかりませんでした。" }),
   ).toBeVisible();
 });
-test("malformed share link has an error", async ({ page }) => {
+test("E2E-05 malformed share link has an error", async ({ page }) => {
   const res = await page.goto("/g/no");
   expect(res?.status()).toBe(400);
   await expect(

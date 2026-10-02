@@ -3,7 +3,7 @@ import cases from "../../shared/kana-cases.json";
 import { validate, normalize, morae, type Input } from "./kana";
 describe("shared Go/TypeScript input contract", () => {
   for (const c of cases)
-    it(c.name, () => {
+    it(`${c.id} ${c.name}`, () => {
       const issue = validate(c.input as Input);
       if (c.valid) {
         expect(issue).toBeUndefined();
@@ -12,6 +12,8 @@ describe("shared Go/TypeScript input contract", () => {
       } else {
         expect(issue?.code).toBe(c.code);
         expect(issue?.field).toBe(c.field);
+        expect(issue?.position).toBe(c.position);
+        expect(issue?.normalized).toBe(c.normalized);
       }
     });
 });
