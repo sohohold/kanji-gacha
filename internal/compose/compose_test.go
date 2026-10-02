@@ -200,6 +200,18 @@ func TestFallbackRespectsLimits(t *testing.T) {
 	}
 }
 
+// buildable draws radicals until attempt succeeds, since a single draw can
+// fail on an unlucky radical, and reports the part count it built. A count
+// that never builds is a failure, not a skipped case.
+func buildable(e *Engine, ph candidate, n, depth int, rng *rand.Rand, cores int) (int, bool) {
+	for range 100 {
+		if res, err := e.attempt(ph, n, depth, rng, cores); err == nil {
+			return len(res.components), true
+		}
+	}
+	return 0, false
+}
+
 // Test ID: GEN-06
 // Every part count a rarity may draw must be reachable within its depth limit
 // for every core size coreSize can pick, or the advertised range is skewed.
@@ -216,12 +228,11 @@ func TestRarityPartCountsReachable(t *testing.T) {
 		}
 		for n := rarity.MinParts; n <= rarity.MaxParts; n++ {
 			for _, c := range cs {
-				res, err := e.attempt(ph, n, rarity.MaxDepth, rng, c)
-				if err != nil {
-					continue
-				}
-				if len(res.components) != n {
-					t.Errorf("%s n=%d cores=%d: got %d components", rarity.Name, n, c, len(res.components))
+				got, ok := buildable(e, ph, n, rarity.MaxDepth, rng, c)
+				if !ok {
+					t.Errorf("%s n=%d cores=%d: never built", rarity.Name, n, c)
+				} else if got != n {
+					t.Errorf("%s n=%d cores=%d: got %d components", rarity.Name, n, c, got)
 				}
 			}
 		}
@@ -240,12 +251,11 @@ func TestMaxReachablePartsMatchesGenerator(t *testing.T) {
 	for depth := 1; depth <= 10; depth++ {
 		n := config.MaxReachableParts(depth)
 		for _, cores := range []int{1, 2, 3, 4} {
-			res, err := e.attempt(ph, n, depth, rng, cores)
-			if err != nil {
-				continue
-			}
-			if len(res.components) != n {
-				t.Errorf("depth=%d cores=%d: got %d of %d parts", depth, cores, len(res.components), n)
+			got, ok := buildable(e, ph, n, depth, rng, cores)
+			if !ok {
+				t.Errorf("depth=%d cores=%d: %d parts never built", depth, cores, n)
+			} else if got != n {
+				t.Errorf("depth=%d cores=%d: got %d of %d parts", depth, cores, got, n)
 			}
 		}
 		// One more part than the limit must not be buildable.
