@@ -12,6 +12,7 @@ import (
 	"kanji-gacha/internal/metrics"
 	"kanji-gacha/internal/model"
 	"kanji-gacha/internal/store"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -160,6 +161,12 @@ func TestErrors(t *testing.T) {
 	}
 	if e := errs[0].(map[string]any); e["field"] != "reading" || e["code"] != "character" || e["position"] != 1.0 || e["normalized"] != "セ漢" {
 		t.Fatalf("validation error %v", e)
+	}
+	// Exactly 1 KiB is still accepted.
+	body := `{"mode":"on","reading":"セイ"}`
+	body += strings.Repeat(" ", 1024-len(body))
+	if w := call(s, "POST", "/api/v1/glyphs", body); w.Code != 200 {
+		t.Fatalf("1024-byte body: %d %s", w.Code, w.Body.String())
 	}
 	s.Store = broken{}
 	w := call(s, "POST", "/api/v1/glyphs", `{"mode":"on","reading":"セイ"}`)
@@ -648,15 +655,12 @@ func TestIDCollisionRetries(t *testing.T) {
 // deadlines records the deadline of every storage call.
 type deadlines struct {
 	store.Store
-	left []time.Duration
+	at []time.Time
 }
 
 func (d *deadlines) record(ctx context.Context) {
-	if dl, ok := ctx.Deadline(); ok {
-		d.left = append(d.left, time.Until(dl))
-	} else {
-		d.left = append(d.left, -1)
-	}
+	dl, _ := ctx.Deadline()
+	d.at = append(d.at, dl)
 }
 func (d *deadlines) Get(ctx context.Context, k string) ([]byte, error) {
 	d.record(ctx)
@@ -681,13 +685,18 @@ func TestOGPTimeBudget(t *testing.T) {
 	if w := call(s, "GET", "/og/"+g.ID+".png", ""); w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	if len(d.left) < 3 { // the PNG lookup, the glyph, and the PNG write
-		t.Fatalf("%d storage calls", len(d.left))
+	if len(d.at) < 3 { // the PNG lookup, the glyph, and the PNG write
+		t.Fatalf("%d storage calls", len(d.at))
 	}
-	for i, left := range d.left {
-		if left <= 0 || left > 10*time.Second {
-			t.Errorf("storage call %d ran with %v left, want a deadline within the 10s Lambda timeout", i, left)
+	// Every call shares the request's one deadline, so time spent rendering
+	// or on earlier calls comes out of what later calls get.
+	for i, at := range d.at {
+		if at.IsZero() || !at.Equal(d.at[0]) {
+			t.Errorf("storage call %d has deadline %v, want the request's %v", i, at, d.at[0])
 		}
+	}
+	if left := time.Until(d.at[0]); left <= 0 || left > 10*time.Second {
+		t.Errorf("request budget %v, want within the 10s Lambda timeout", left)
 	}
 }
 
@@ -733,12 +742,39 @@ func TestResponsesMatchOpenAPI(t *testing.T) {
 		}
 		r := httptest.NewRequest(c.method, c.path, strings.NewReader(c.body))
 		r.Header.Set("Content-Type", "application/json")
-		if ok, errs := v.ValidateHttpResponse(r, w.Result()); !ok {
-			for _, err := range errs {
-				t.Errorf("%s %s %d: %s %s", c.method, c.path, w.Code, err.Message, err.Reason)
-				for _, se := range err.SchemaValidationErrors {
-					t.Errorf("  %s", se.Error())
-				}
+		matches(t, v, r, w)
+	}
+	// The remaining POST problems: wrong media type, rate limit, paused.
+	r := httptest.NewRequest("POST", "/api/v1/glyphs", strings.NewReader(`{}`))
+	r.Header.Set("Content-Type", "text/plain")
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	if w.Code != 415 {
+		t.Errorf("text/plain: %d", w.Code)
+	}
+	matches(t, v, r, w)
+	s.GenerationEnabled = false
+	if w := call(s, "POST", "/api/v1/glyphs", `{"mode":"on","reading":"セイ"}`); w.Code != 503 {
+		t.Errorf("paused: %d", w.Code)
+	} else {
+		matches(t, v, httptest.NewRequest("POST", "/api/v1/glyphs", nil), w)
+	}
+	s.GenerationEnabled = true
+	s.ips["192.0.2.1"] = bucket{tokens: 0, seen: s.Now()}
+	if w := call(s, "POST", "/api/v1/glyphs", `{"mode":"on","reading":"セイ"}`); w.Code != 429 {
+		t.Errorf("rate limit: %d", w.Code)
+	} else {
+		matches(t, v, httptest.NewRequest("POST", "/api/v1/glyphs", nil), w)
+	}
+}
+
+func matches(t *testing.T, v validator.Validator, r *http.Request, w *httptest.ResponseRecorder) {
+	t.Helper()
+	if ok, errs := v.ValidateHttpResponse(r, w.Result()); !ok {
+		for _, err := range errs {
+			t.Errorf("%s %s %d: %s %s", r.Method, r.URL.Path, w.Code, err.Message, err.Reason)
+			for _, se := range err.SchemaValidationErrors {
+				t.Errorf("  %s", se.Error())
 			}
 		}
 	}

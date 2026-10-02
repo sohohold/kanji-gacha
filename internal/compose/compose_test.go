@@ -348,6 +348,9 @@ func TestRankScoreTerms(t *testing.T) {
 		whole("丙", []dict.Reading{{Text: "セイ"}}, nil, 0.5),
 		whole("丁", []dict.Reading{{Text: "ゼイ"}}, nil, 0),
 		{ID: "丁-02", Glyph: "丁-02", Char: "丁", Position: "right", Strokes: 2, Bounds: model.Box{W: 50, H: 100}},
+		// 戊 differs from 乙 only in sounding like ハク, so the gap is the cosine term.
+		{ID: "戊", Glyph: "戊", Char: "戊", Position: "whole", Strokes: 5, Bounds: model.Box{W: 100, H: 100},
+			On: []dict.Reading{{Text: "ゼイ"}}, OnVector: vector.Reading("ハク"), KunVector: vector.Reading("ハク")},
 	}}
 	e := New(c, d)
 	score := func(mode, okuri string) map[string]float64 {
@@ -365,6 +368,9 @@ func TestRankScoreTerms(t *testing.T) {
 	}
 	if !near(on["甲"]-on["丙"], c.Gamma*0.5) {
 		t.Errorf("frequency 0.5 costs %g, want γ/2=%g", on["甲"]-on["丙"], c.Gamma*0.5)
+	}
+	if want := 1 - vector.Cos(sound, vector.Reading("ハク")); !near(on["乙"]-on["戊"], want) {
+		t.Errorf("sound similarity separates 乙 and 戊 by %g, want %g", on["乙"]-on["戊"], want)
 	}
 	if !near(on["丁"]-on["乙"], 0.3) {
 		t.Errorf("a 旁 form adds %g, want δ=0.3", on["丁"]-on["乙"])
