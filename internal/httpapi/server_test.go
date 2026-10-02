@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func setup(t *testing.T) *Server {
@@ -49,9 +50,15 @@ func call(s *Server, method, path, body string) *httptest.ResponseRecorder {
 // Test ID: API-01
 func TestSaveShareOGP(t *testing.T) {
 	s := setup(t)
+	// Three concurrent renders under the race detector can outlast the
+	// production limit on a busy CI runner; this test is about reuse, not speed.
+	s.OGPRender = time.Minute
 	w := call(s, "POST", "/api/v1/glyphs", `{"mode":"kun","reading":"あお","okurigana":"い"}`)
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
+	}
+	if cc := w.Header().Get("Cache-Control"); cc != "no-store" {
+		t.Fatalf("POST cache control %q", cc)
 	}
 	var g model.Glyph
 	if e := json.Unmarshal(w.Body.Bytes(), &g); e != nil {
@@ -251,6 +258,49 @@ func TestOGPConflictKeepsReadError(t *testing.T) {
 	}
 	if cs.reads != 2 { // the initial lookup, then one reread that must not be retried
 		t.Errorf("read the object %d times, want 2", cs.reads)
+	}
+}
+
+// failingPNG stores glyphs normally but has no PNG yet and cannot save one.
+type failingPNG struct {
+	store.Store
+	png string
+}
+
+func (f failingPNG) Get(ctx context.Context, k string) ([]byte, error) {
+	if k == f.png {
+		return nil, store.ErrNotFound
+	}
+	return f.Store.Get(ctx, k)
+}
+func (f failingPNG) PutIfAbsent(ctx context.Context, k string, b []byte, ct string) error {
+	if k == f.png {
+		return errors.New("offline")
+	}
+	return f.Store.PutIfAbsent(ctx, k, b, ct)
+}
+
+// Test ID: API-15
+// A first OGP request whose image cannot be drawn or saved is a 503 that no
+// cache keeps, so a later request can still produce the image.
+func TestOGPRenderOrSaveFailure(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		tweak func(*Server, model.Glyph)
+	}{
+		{"render", func(s *Server, _ model.Glyph) { s.OGPRender = time.Nanosecond }},
+		{"save", func(s *Server, g model.Glyph) { s.Store = failingPNG{Store: s.Store, png: g.OGPKey} }},
+	} {
+		s := setup(t)
+		g := savedGlyph(t, s)
+		c.tweak(s, g)
+		w := call(s, "GET", "/og/"+g.ID+".png", "")
+		if w.Code != 503 {
+			t.Errorf("%s: status %d, want 503", c.name, w.Code)
+		}
+		if cc := w.Header().Get("Cache-Control"); cc != "no-store" {
+			t.Errorf("%s: cache control %q", c.name, cc)
+		}
 	}
 }
 

@@ -599,5 +599,83 @@
     "valid": false,
     "field": "reading",
     "code": "morae"
+  },
+  {
+    "id": "IN-44",
+    "name": "length-before-sequence",
+    "input": {
+      "mode": "on",
+      "reading": "ーーーーーー",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "length",
+    "field": "reading"
+  },
+  {
+    "id": "IN-45",
+    "name": "kun-six",
+    "input": {
+      "mode": "kun",
+      "reading": "アイウエオカ",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "length",
+    "field": "reading"
+  },
+  {
+    "id": "IN-46",
+    "name": "count-codepoints",
+    "input": {
+      "mode": "on",
+      "reading": "キャキャキャ",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "length",
+    "field": "reading"
+  },
+  {
+    "id": "IN-47",
+    "name": "middle-dot",
+    "input": {
+      "mode": "on",
+      "reading": "ア・イ",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "character",
+    "field": "reading",
+    "position": 1,
+    "normalized": "ア・イ"
+  },
+  {
+    "id": "IN-48",
+    "name": "small-ka",
+    "input": {
+      "mode": "on",
+      "reading": "カヵ",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "character",
+    "field": "reading",
+    "position": 1,
+    "normalized": "カヵ"
+  },
+  {
+    "id": "IN-49",
+    "name": "tsu-tsu",
+    "input": {
+      "mode": "on",
+      "reading": "カッッ",
+      "okurigana": ""
+    },
+    "valid": false,
+    "code": "sequence",
+    "field": "reading",
+    "position": 2,
+    "normalized": "カッッ"
   }
 ]

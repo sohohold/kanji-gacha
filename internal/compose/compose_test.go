@@ -49,7 +49,8 @@ func TestGenerationLimits(t *testing.T) {
 			// part may shift by up to one unit.
 			b, ok := kage.Extent(kage.Expand(e.glyph(res.parts), e.Dict.Lookup))
 			m := e.Config.Margin * kageSize / e.Config.Canvas
-			if !ok || b.MinX < m-1.01 || b.MinY < m-1.01 || b.MaxX > kageSize-m+1.01 || b.MaxY > kageSize-m+1.01 {
+			finite := !math.IsNaN(b.MinX+b.MinY+b.MaxX+b.MaxY) && !math.IsInf(b.MinX+b.MinY+b.MaxX+b.MaxY, 0)
+			if !ok || !finite || b.MinX < m-1.01 || b.MinY < m-1.01 || b.MaxX > kageSize-m+1.01 || b.MaxY > kageSize-m+1.01 {
 				t.Fatalf("out of canvas: %+v", b)
 			}
 			var check func(*model.Node, int)
@@ -201,15 +202,15 @@ func TestFallbackRespectsLimits(t *testing.T) {
 }
 
 // buildable draws radicals until attempt succeeds, since a single draw can
-// fail on an unlucky radical, and reports the part count it built. A count
-// that never builds is a failure, not a skipped case.
-func buildable(e *Engine, ph candidate, n, depth int, rng *rand.Rand, cores int) (int, bool) {
+// fail on an unlucky radical, and returns what it built. A count that never
+// builds is a failure, not a skipped case.
+func buildable(e *Engine, ph candidate, n, depth int, rng *rand.Rand, cores int) ([]model.Component, bool) {
 	for range 100 {
 		if res, err := e.attempt(ph, n, depth, rng, cores); err == nil {
-			return len(res.components), true
+			return res.components, true
 		}
 	}
-	return 0, false
+	return nil, false
 }
 
 // Test ID: GEN-06
@@ -231,8 +232,24 @@ func TestRarityPartCountsReachable(t *testing.T) {
 				got, ok := buildable(e, ph, n, rarity.MaxDepth, rng, c)
 				if !ok {
 					t.Errorf("%s n=%d cores=%d: never built", rarity.Name, n, c)
-				} else if got != n {
-					t.Errorf("%s n=%d cores=%d: got %d components", rarity.Name, n, c, got)
+					continue
+				}
+				if len(got) != n {
+					t.Errorf("%s n=%d cores=%d: got %d components", rarity.Name, n, c, len(got))
+				}
+				// A repeated phonetic is the same character every time. When the
+				// depth leaves too few radical slots, it repeats up to 4 times.
+				readings := 0
+				for _, x := range got {
+					if x.Role == "reading" {
+						readings++
+						if x.Char != ph.part.Char {
+							t.Errorf("%s n=%d cores=%d: phonetic %s, want %s", rarity.Name, n, c, x.Char, ph.part.Char)
+						}
+					}
+				}
+				if readings < c || readings > 4 {
+					t.Errorf("%s n=%d cores=%d: %d phonetics", rarity.Name, n, c, readings)
 				}
 			}
 		}
@@ -250,12 +267,15 @@ func TestMaxReachablePartsMatchesGenerator(t *testing.T) {
 	rng := rand.New(rand.NewChaCha8([32]byte{5}))
 	for depth := 1; depth <= 10; depth++ {
 		n := config.MaxReachableParts(depth)
+		if want := max(2, depth+2); depth == 1 && n != 2 || depth > 1 && n != want {
+			t.Errorf("MaxReachableParts(%d) = %d, want %d", depth, n, want)
+		}
 		for _, cores := range []int{1, 2, 3, 4} {
 			got, ok := buildable(e, ph, n, depth, rng, cores)
 			if !ok {
 				t.Errorf("depth=%d cores=%d: %d parts never built", depth, cores, n)
-			} else if got != n {
-				t.Errorf("depth=%d cores=%d: got %d of %d parts", depth, cores, got, n)
+			} else if len(got) != n {
+				t.Errorf("depth=%d cores=%d: got %d of %d parts", depth, cores, len(got), n)
 			}
 		}
 		// One more part than the limit must not be buildable.
