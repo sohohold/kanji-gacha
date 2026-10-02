@@ -20,6 +20,7 @@ func TestSharedCases(t *testing.T) {
 		Valid                   bool
 		Normalized, Code, Field string
 		Morae                   []string
+		Position                *int
 	}
 	if e = json.Unmarshal(b, &cases); e != nil {
 		t.Fatal(e)
@@ -34,14 +35,14 @@ func TestSharedCases(t *testing.T) {
 				if r.Reading != c.Normalized || !reflect.DeepEqual(r.Morae, c.Morae) {
 					t.Fatalf("got %+v", r)
 				}
-			} else if issue == nil || issue.Code != c.Code || issue.Field != c.Field {
-				t.Fatalf("got %+v, want %s/%s", issue, c.Field, c.Code)
+			} else if issue == nil || issue.Code != c.Code || issue.Field != c.Field || !reflect.DeepEqual(issue.Position, c.Position) || issue.Normalized != c.Normalized {
+				t.Fatalf("got %+v, want %s/%s at %v in %q", issue, c.Field, c.Code, c.Position, c.Normalized)
 			}
 		})
 	}
 }
 
-// Test IDs: REQ-01 to REQ-16, one per case.
+// Test IDs: REQ-01 to REQ-16, REQ-18 and REQ-19, one per case.
 func TestJSONBoundary(t *testing.T) {
 	for _, c := range []struct {
 		id, body string
@@ -63,6 +64,8 @@ func TestJSONBoundary(t *testing.T) {
 		{"REQ-14", `{"mode":"on"}`, 422},
 		{"REQ-15", `{"mode":"on","reading":"ア"}`, 0},
 		{"REQ-16", `{"mode":"on","reading":"ア","seed":1}`, 422},
+		{"REQ-18", `{"mode":"kun","reading":"ア","okurigana":null}`, 422},
+		{"REQ-19", `{"mode":"kun","reading":"ア","okurigana":5}`, 422},
 	} {
 		t.Run(c.id, func(t *testing.T) {
 			if _, status, e := Decode([]byte(c.body)); status != c.status {

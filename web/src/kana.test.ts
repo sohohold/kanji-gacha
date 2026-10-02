@@ -12,6 +12,8 @@ describe("shared Go/TypeScript input contract", () => {
       } else {
         expect(issue?.code).toBe(c.code);
         expect(issue?.field).toBe(c.field);
+        expect(issue?.position).toBe(c.position);
+        expect(issue?.normalized).toBe(c.normalized);
       }
     });
 });

@@ -33,7 +33,9 @@
     },
     "valid": false,
     "code": "character",
-    "field": "okurigana"
+    "field": "okurigana",
+    "position": 0,
+    "normalized": "漢"
   },
   {
     "id": "IN-04",
@@ -119,7 +121,9 @@
     },
     "valid": false,
     "code": "character",
-    "field": "reading"
+    "field": "reading",
+    "position": 0,
+    "normalized": "漢字漢字漢字"
   },
   {
     "id": "IN-10",
@@ -131,7 +135,9 @@
     },
     "valid": false,
     "code": "character",
-    "field": "reading"
+    "field": "reading",
+    "position": 0,
+    "normalized": "abcdef"
   },
   {
     "id": "IN-11",
@@ -143,7 +149,9 @@
     },
     "valid": false,
     "code": "character",
-    "field": "okurigana"
+    "field": "okurigana",
+    "position": 0,
+    "normalized": "漢漢漢漢"
   },
   {
     "id": "IN-12",
@@ -155,7 +163,9 @@
     },
     "valid": false,
     "code": "character",
-    "field": "reading"
+    "field": "reading",
+    "position": 0,
+    "normalized": " カ"
   },
   {
     "id": "IN-13",
@@ -251,7 +261,9 @@
     },
     "valid": false,
     "code": "character",
-    "field": "reading"
+    "field": "reading",
+    "position": 0,
+    "normalized": "漢字"
   },
   {
     "id": "IN-20",
@@ -263,7 +275,9 @@
     },
     "valid": false,
     "code": "character",
-    "field": "reading"
+    "field": "reading",
+    "position": 0,
+    "normalized": "abc"
   },
   {
     "id": "IN-21",
@@ -275,7 +289,9 @@
     },
     "valid": false,
     "code": "character",
-    "field": "reading"
+    "field": "reading",
+    "position": 0,
+    "normalized": "😀"
   },
   {
     "id": "IN-22",
@@ -287,7 +303,9 @@
     },
     "valid": false,
     "code": "character",
-    "field": "reading"
+    "field": "reading",
+    "position": 0,
+    "normalized": "�"
   },
   {
     "id": "IN-23",
@@ -299,7 +317,9 @@
     },
     "valid": false,
     "code": "character",
-    "field": "reading"
+    "field": "reading",
+    "position": 0,
+    "normalized": " ゙"
   },
   {
     "id": "IN-24",
@@ -311,7 +331,9 @@
     },
     "valid": false,
     "code": "character",
-    "field": "reading"
+    "field": "reading",
+    "position": 1,
+    "normalized": "クヮ"
   },
   {
     "id": "IN-25",
@@ -323,7 +345,9 @@
     },
     "valid": false,
     "code": "character",
-    "field": "reading"
+    "field": "reading",
+    "position": 1,
+    "normalized": "クヽ"
   },
   {
     "id": "IN-26",
@@ -335,7 +359,9 @@
     },
     "valid": false,
     "code": "leading",
-    "field": "reading"
+    "field": "reading",
+    "position": 0,
+    "normalized": "ャク"
   },
   {
     "id": "IN-27",
@@ -347,7 +373,9 @@
     },
     "valid": false,
     "code": "leading",
-    "field": "reading"
+    "field": "reading",
+    "position": 0,
+    "normalized": "ンア"
   },
   {
     "id": "IN-28",
@@ -359,7 +387,9 @@
     },
     "valid": false,
     "code": "leading",
-    "field": "reading"
+    "field": "reading",
+    "position": 0,
+    "normalized": "ーア"
   },
   {
     "id": "IN-29",
@@ -371,7 +401,9 @@
     },
     "valid": false,
     "code": "leading",
-    "field": "reading"
+    "field": "reading",
+    "position": 0,
+    "normalized": "ッア"
   },
   {
     "id": "IN-30",
@@ -383,7 +415,9 @@
     },
     "valid": false,
     "code": "leading",
-    "field": "okurigana"
+    "field": "okurigana",
+    "position": 0,
+    "normalized": "ャ"
   },
   {
     "id": "IN-31",
@@ -409,7 +443,9 @@
     },
     "valid": false,
     "code": "small_kana",
-    "field": "reading"
+    "field": "reading",
+    "position": 1,
+    "normalized": "アャ"
   },
   {
     "id": "IN-33",
@@ -421,7 +457,9 @@
     },
     "valid": false,
     "code": "small_kana",
-    "field": "reading"
+    "field": "reading",
+    "position": 2,
+    "normalized": "キョャ"
   },
   {
     "id": "IN-34",
@@ -479,7 +517,9 @@
     },
     "valid": false,
     "code": "sequence",
-    "field": "reading"
+    "field": "reading",
+    "position": 2,
+    "normalized": "カッー"
   },
   {
     "id": "IN-38",
@@ -491,7 +531,9 @@
     },
     "valid": false,
     "code": "sequence",
-    "field": "reading"
+    "field": "reading",
+    "position": 2,
+    "normalized": "カンー"
   },
   {
     "id": "IN-39",
@@ -503,7 +545,9 @@
     },
     "valid": false,
     "code": "sequence",
-    "field": "reading"
+    "field": "reading",
+    "position": 2,
+    "normalized": "カッン"
   },
   {
     "id": "IN-40",
