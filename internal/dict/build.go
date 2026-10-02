@@ -379,6 +379,17 @@ func Build(glyphwiki, kdic, overrides []byte) (Dictionary, error) {
 	if len(d.Parts) == 0 {
 		return d, fmt.Errorf("empty dictionary")
 	}
+	// The generator draws its phonetic from the whole glyphs of the parents
+	// that have a reading; the legend glyphs alone leave it nothing to draw.
+	candidates := 0
+	for _, p := range d.Parts {
+		if p.Position == "whole" && kd[p.Char] != nil && kd[p.Char].parent && (p.OnVector != (vector.Vector{}) || p.KunVector != (vector.Vector{})) {
+			candidates++
+		}
+	}
+	if candidates == 0 {
+		return d, fmt.Errorf("no phonetic candidates")
+	}
 	if e := verifySpecials(&d, ov); e != nil {
 		return d, e
 	}

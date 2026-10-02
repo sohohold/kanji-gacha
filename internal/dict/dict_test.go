@@ -127,3 +127,16 @@ func BenchmarkDecode(b *testing.B) {
 		}
 	}
 }
+
+// Test ID: DICT-13
+// The shipped dictionary is built over the 6,458 parents spec 3.1 states;
+// a rebuild that changes the count must update the spec with it.
+func TestBundledParents(t *testing.T) {
+	d, e := Load()
+	if e != nil {
+		t.Fatal(e)
+	}
+	if d.Report["parents"] != 6458 || d.Report["parentsMissing"] != 0 {
+		t.Fatalf("%d parents, %d missing", d.Report["parents"], d.Report["parentsMissing"])
+	}
+}

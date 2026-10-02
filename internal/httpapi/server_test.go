@@ -17,6 +17,9 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/pb33f/libopenapi"
+	validator "github.com/pb33f/libopenapi-validator"
 	"testing"
 	"time"
 )
@@ -684,6 +687,59 @@ func TestOGPTimeBudget(t *testing.T) {
 	for i, left := range d.left {
 		if left <= 0 || left > 10*time.Second {
 			t.Errorf("storage call %d ran with %v left, want a deadline within the 10s Lambda timeout", i, left)
+		}
+	}
+}
+
+// Test ID: API-19
+// Every response the routes give, success or problem, matches the contract in
+// api/openapi.yaml: its status, content type and body schema.
+func TestResponsesMatchOpenAPI(t *testing.T) {
+	spec, e := os.ReadFile("../../api/openapi.yaml")
+	if e != nil {
+		t.Fatal(e)
+	}
+	doc, e := libopenapi.NewDocument(spec)
+	if e != nil {
+		t.Fatal(e)
+	}
+	v, errs := validator.NewValidator(doc)
+	if len(errs) > 0 {
+		t.Fatal(errs)
+	}
+	s := setup(t)
+	g := savedGlyph(t, s)
+	missing := strings.Repeat("a", 32)
+	for _, c := range []struct {
+		method, path, body string
+		status             int
+	}{
+		{"POST", "/api/v1/glyphs", `{"mode":"kun","reading":"あお","okurigana":"い"}`, 200},
+		{"POST", "/api/v1/glyphs", `{"mode":"on","reading":"漢"}`, 422},
+		{"POST", "/api/v1/glyphs", `{"mode":"on","reading":"ア","reading":"イ"}`, 400},
+		{"POST", "/api/v1/glyphs", strings.Repeat("x", 1025), 413},
+		{"GET", "/api/v1/glyphs/" + g.ID, "", 200},
+		{"GET", "/api/v1/glyphs/no", "", 400},
+		{"GET", "/api/v1/glyphs/" + missing, "", 404},
+		{"GET", "/g/" + g.ID, "", 200},
+		{"GET", "/g/" + missing, "", 404},
+		{"GET", "/og/" + g.ID + ".png", "", 200},
+		{"GET", "/og/" + missing + ".png", "", 404},
+	} {
+		w := call(s, c.method, c.path, c.body)
+		if w.Code != c.status {
+			t.Errorf("%s %s: status %d, want %d", c.method, c.path, w.Code, c.status)
+			continue
+		}
+		r := httptest.NewRequest(c.method, c.path, strings.NewReader(c.body))
+		r.Header.Set("Content-Type", "application/json")
+		if ok, errs := v.ValidateHttpResponse(r, w.Result()); !ok {
+			for _, err := range errs {
+				t.Errorf("%s %s %d: %s %s", c.method, c.path, w.Code, err.Message, err.Reason)
+				for _, se := range err.SchemaValidationErrors {
+					t.Errorf("  %s", se.Error())
+				}
+			}
 		}
 	}
 }

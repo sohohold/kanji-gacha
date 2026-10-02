@@ -13,6 +13,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -591,5 +592,58 @@ func TestFrameInnerStaysInside(t *testing.T) {
 	}
 	if outside == 0 {
 		t.Fatal("no frame reaches past its rectangle; the test checks nothing")
+	}
+}
+
+// Test ID: GEN-16
+// The IDS of every generated glyph is a well-formed description of its tree:
+// read as a prefix expression, each operator takes its arity of operands and
+// nothing is left over, and the leaves are exactly the glyph's components.
+func TestIDSDescribesTree(t *testing.T) {
+	e := testEngine(t)
+	r, _ := kana.Validate(kana.Input{Mode: "on", Reading: "セイ"})
+	ph := e.rank(r.Morae, r.Mode, r.Okurigana)[0]
+	rng := rand.New(rand.NewChaCha8([32]byte{10}))
+	built := 0
+	for _, rarity := range e.Config.Rarities {
+		for i := 0; i < 50; i++ {
+			res, err := e.attempt(ph, rarity.MaxParts, rarity.MaxDepth, rng, coreSize(rarity, rng))
+			if err != nil {
+				continue
+			}
+			built++
+			ids := res.tree.IDS()
+			need := 1
+			var leaves []string
+			for i, c := range []rune(ids) {
+				if need == 0 {
+					t.Fatalf("%s: operands left over at %d", ids, i)
+				}
+				need--
+				switch {
+				case c == '⿲' || c == '⿳':
+					need += 3
+				case c >= '⿰' && c <= '⿻':
+					need += 2
+				default:
+					leaves = append(leaves, string(c))
+				}
+			}
+			if need != 0 {
+				t.Fatalf("%s: %d operands missing", ids, need)
+			}
+			var chars []string
+			for _, c := range res.components {
+				chars = append(chars, c.Char)
+			}
+			slices.Sort(leaves)
+			slices.Sort(chars)
+			if !slices.Equal(leaves, chars) {
+				t.Fatalf("%s: leaves %v, components %v", ids, leaves, chars)
+			}
+		}
+	}
+	if built < 100 {
+		t.Fatalf("only %d glyphs built", built)
 	}
 }
