@@ -551,3 +551,111 @@ func TestGenerateMetrics(t *testing.T) {
 		t.Fatalf("rejected requests recorded metrics: %q", buf.String())
 	}
 }
+
+// Test ID: API-16
+// Generation takes JSON only; another or missing Content-Type is a 415.
+func TestRejectNonJSON(t *testing.T) {
+	s := setup(t)
+	for _, ct := range []string{"text/plain", "application/x-www-form-urlencoded", ""} {
+		r := httptest.NewRequest("POST", "/api/v1/glyphs", strings.NewReader(`{"mode":"on","reading":"セイ"}`))
+		if ct != "" {
+			r.Header.Set("Content-Type", ct)
+		}
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, r)
+		if w.Code != 415 || w.Header().Get("Content-Type") != "application/problem+json" {
+			t.Errorf("%q: %d %s", ct, w.Code, w.Header().Get("Content-Type"))
+		}
+	}
+}
+
+// colliding rejects the first collisions glyph writes as if the ID were taken.
+type colliding struct {
+	store.Store
+	collisions int
+	keys       []string
+}
+
+func (c *colliding) PutIfAbsent(ctx context.Context, k string, b []byte, ct string) error {
+	if strings.HasPrefix(k, "glyphs/") {
+		c.keys = append(c.keys, k)
+		if len(c.keys) <= c.collisions {
+			return store.ErrExists
+		}
+	}
+	return c.Store.PutIfAbsent(ctx, k, b, ct)
+}
+
+// Test ID: API-17
+// An ID collision is retried under a fresh ID, and the response names the ID
+// that was actually saved.
+func TestIDCollisionRetries(t *testing.T) {
+	s := setup(t)
+	c := &colliding{Store: s.Store, collisions: 1}
+	s.Store = c
+	w := call(s, "POST", "/api/v1/glyphs", `{"mode":"on","reading":"セイ"}`)
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var g model.Glyph
+	if e := json.Unmarshal(w.Body.Bytes(), &g); e != nil {
+		t.Fatal(e)
+	}
+	if len(c.keys) != 2 || c.keys[0] == c.keys[1] || c.keys[1] != "glyphs/"+g.ID+".json" {
+		t.Fatalf("wrote %v, answered %s", c.keys, g.ID)
+	}
+	if w := call(s, "GET", "/api/v1/glyphs/"+g.ID, ""); w.Code != 200 {
+		t.Fatalf("saved glyph not found: %d", w.Code)
+	}
+	// Repeated collisions end in a 503 rather than an unsaved link.
+	s.Store = &colliding{Store: c.Store, collisions: 100}
+	if w := call(s, "POST", "/api/v1/glyphs", `{"mode":"on","reading":"セイ"}`); w.Code != 503 || strings.Contains(w.Body.String(), `"id"`) {
+		t.Fatalf("after collisions: %d %s", w.Code, w.Body.String())
+	}
+}
+
+// deadlines records the deadline of every storage call.
+type deadlines struct {
+	store.Store
+	left []time.Duration
+}
+
+func (d *deadlines) record(ctx context.Context) {
+	if dl, ok := ctx.Deadline(); ok {
+		d.left = append(d.left, time.Until(dl))
+	} else {
+		d.left = append(d.left, -1)
+	}
+}
+func (d *deadlines) Get(ctx context.Context, k string) ([]byte, error) {
+	d.record(ctx)
+	return d.Store.Get(ctx, k)
+}
+func (d *deadlines) PutIfAbsent(ctx context.Context, k string, b []byte, ct string) error {
+	d.record(ctx)
+	return d.Store.PutIfAbsent(ctx, k, b, ct)
+}
+
+// Test ID: API-18
+// Drawing an OGP image is limited to 3s by default, and the storage calls of
+// the request run under the request's remaining budget, inside the Lambda's 10s.
+func TestOGPTimeBudget(t *testing.T) {
+	s := setup(t)
+	if s.OGPRender != 3*time.Second {
+		t.Fatalf("default OGP render limit %v, want 3s", s.OGPRender)
+	}
+	g := savedGlyph(t, s)
+	d := &deadlines{Store: s.Store}
+	s.Store = d
+	if w := call(s, "GET", "/og/"+g.ID+".png", ""); w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if len(d.left) < 3 { // the PNG lookup, the glyph, and the PNG write
+		t.Fatalf("%d storage calls", len(d.left))
+	}
+	for i, left := range d.left {
+		if left <= 0 || left > 10*time.Second {
+			t.Errorf("storage call %d ran with %v left, want a deadline within the 10s Lambda timeout", i, left)
+		}
+	}
+}

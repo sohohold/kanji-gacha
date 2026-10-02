@@ -98,6 +98,16 @@ func TestBuild(t *testing.T) {
 	if !bytes.Equal(b1, b2) {
 		t.Error("the same input built different bytes")
 	}
+	// Every parent is a whole part, drawn with its Japanese form.
+	for c := range chars {
+		found := false
+		for _, p := range d.Parts {
+			found = found || p.Position == "whole" && p.Char == c
+		}
+		if !found {
+			t.Errorf("parent %s has no whole part", c)
+		}
+	}
 	f, ok := by["u56d7-j#frame"]
 	if !ok || f.Char != "囗" || f.Operator != "⿴" || f.FrameUses != 3 || f.Inner == nil {
 		t.Fatalf("frame %+v", f)
