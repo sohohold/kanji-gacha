@@ -70,9 +70,16 @@ func TestSaveShareOGP(t *testing.T) {
 	if w.Code != 200 || !bytes.Equal(w.Body.Bytes(), original) {
 		t.Fatal("saved result changed")
 	}
+	const year = "public, max-age=31536000, immutable"
+	if cc := w.Header().Get("Cache-Control"); cc != year {
+		t.Errorf("result cache control %q", cc)
+	}
 	w = call(s, "GET", "/g/"+g.ID, "")
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "https://example.test/og/"+g.ID+".png") {
 		t.Fatal("missing OGP", w.Body.String())
+	}
+	if cc := w.Header().Get("Cache-Control"); cc != "public, max-age=86400" {
+		t.Errorf("share page cache control %q", cc)
 	}
 	var wg sync.WaitGroup
 	imgs := make(chan []byte, 3)
@@ -101,6 +108,9 @@ func TestSaveShareOGP(t *testing.T) {
 	w = call(s, "GET", "/og/"+g.ID+".png", "")
 	if !bytes.Equal(w.Body.Bytes(), first) {
 		t.Fatal("image not reused")
+	}
+	if cc := w.Header().Get("Cache-Control"); cc != year {
+		t.Errorf("OGP cache control %q", cc)
 	}
 }
 
