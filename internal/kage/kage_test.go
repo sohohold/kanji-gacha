@@ -38,6 +38,7 @@ func loadGolden(t *testing.T) golden {
 	return g
 }
 
+// Test ID: KAGE-01
 // The port must draw what the reference engine draws. Outlines are floored to
 // a 0.1 grid, so a last-bit difference in a math function can move a point by
 // one step; anything more is a porting error.
@@ -87,6 +88,7 @@ func TestMatchesReferenceEngine(t *testing.T) {
 	t.Logf("%d cases against %s, %d points one grid step off", len(g.Cases), g.Engine, inexact)
 }
 
+// Test ID: KAGE-02
 func TestExpandPlacesComponents(t *testing.T) {
 	parts := map[string]string{"a": "1:0:0:0:100:200:100", "b": "99:0:0:0:0:100:200:a"}
 	s := Expand("99:0:0:100:0:200:100:b", func(n string) string { return parts[n] })
@@ -102,6 +104,7 @@ func TestExpandPlacesComponents(t *testing.T) {
 	}
 }
 
+// Test ID: KAGE-03
 // A reference cycle would overflow the original's stack; the port stops at a
 // fixed depth instead.
 func TestExpandCycle(t *testing.T) {
@@ -112,6 +115,7 @@ func TestExpandCycle(t *testing.T) {
 	}
 }
 
+// Test ID: KAGE-04
 func TestNormalizeWinding(t *testing.T) {
 	g := loadGolden(t)
 	for _, c := range g.Cases {
@@ -129,6 +133,7 @@ func TestNormalizeWinding(t *testing.T) {
 	}
 }
 
+// Test ID: KAGE-05
 func TestJSNumber(t *testing.T) {
 	for in, want := range map[string]float64{"": 0, " 12 ": 12, "-3.5": -3.5, "1e2": 100, "0x10": 16, ".5": 0.5, "5.": 5} {
 		if got := jsNumber(in); got != want {

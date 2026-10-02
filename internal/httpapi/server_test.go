@@ -45,6 +45,8 @@ func call(s *Server, method, path, body string) *httptest.ResponseRecorder {
 	s.Handler().ServeHTTP(w, r)
 	return w
 }
+
+// Test ID: API-01
 func TestSaveShareOGP(t *testing.T) {
 	s := setup(t)
 	w := call(s, "POST", "/api/v1/glyphs", `{"mode":"kun","reading":"あお","okurigana":"い"}`)
@@ -101,6 +103,8 @@ func (broken) Get(context.Context, string) ([]byte, error) { return nil, errors.
 func (broken) PutIfAbsent(context.Context, string, []byte, string) error {
 	return errors.New("offline")
 }
+
+// Test ID: API-02
 func TestErrors(t *testing.T) {
 	s := setup(t)
 	for _, c := range []struct {
@@ -119,6 +123,7 @@ func TestErrors(t *testing.T) {
 	}
 }
 
+// Test ID: API-03
 // A share link is opened in a browser, so one that cannot be served answers
 // with the SPA, which explains the failure, rather than raw problem+json. The
 // status is kept, and the page is neither cached nor carries OGP tags.
@@ -208,6 +213,7 @@ func savedGlyph(t *testing.T, s *Server) model.Glyph {
 	return g
 }
 
+// Test ID: API-04
 // The loser of the race serves the object that actually won the write, not its
 // own render, which a rolling deployment could have produced differently.
 func TestOGPConflictReturnsStoredImage(t *testing.T) {
@@ -228,6 +234,7 @@ func TestOGPConflictReturnsStoredImage(t *testing.T) {
 	}
 }
 
+// Test ID: API-05
 // A storage or authentication failure must not be reported as a served image,
 // least of all under a one-year immutable cache policy.
 func TestOGPConflictKeepsReadError(t *testing.T) {
@@ -247,6 +254,7 @@ func TestOGPConflictKeepsReadError(t *testing.T) {
 	}
 }
 
+// Test ID: API-06
 func TestMethodNotAllowedIsProblem(t *testing.T) {
 	s := setup(t)
 	for _, path := range []string{"/g/" + strings.Repeat("a", 32), "/og/" + strings.Repeat("a", 32) + ".png", "/", "/healthz", "/assets/index.js"} {
@@ -266,6 +274,7 @@ func TestMethodNotAllowedIsProblem(t *testing.T) {
 	}
 }
 
+// Test ID: API-07
 // A wrong method on an API resource is a 405 naming the methods it routes, not
 // a 404 that denies the resource exists.
 func TestAPIMethodNotAllowed(t *testing.T) {
@@ -300,6 +309,7 @@ func TestAPIMethodNotAllowed(t *testing.T) {
 	}
 }
 
+// Test ID: API-08
 func TestRateLimitUsesViewerAddress(t *testing.T) {
 	s := setup(t)
 	s.TrustCloudFront = true
@@ -322,6 +332,7 @@ func TestRateLimitUsesViewerAddress(t *testing.T) {
 	}
 }
 
+// Test ID: API-09
 // A path no GET route serves is a missing resource, not a wrong method.
 func TestUnknownPathIsNotFound(t *testing.T) {
 	s := setup(t)
@@ -339,6 +350,7 @@ func TestUnknownPathIsNotFound(t *testing.T) {
 	}
 }
 
+// Test ID: API-10
 func TestViewerIP(t *testing.T) {
 	for _, c := range []struct{ in, want string }{
 		{"198.51.100.7:52011", "198.51.100.7"},
@@ -362,6 +374,7 @@ func TestViewerIP(t *testing.T) {
 	}
 }
 
+// Test ID: API-11
 // An IPv6 viewer must get its own bucket rather than falling back to the
 // adapter's RemoteAddr, which every viewer shares.
 func TestRateLimitIPv6Viewer(t *testing.T) {
@@ -377,6 +390,7 @@ func TestRateLimitIPv6Viewer(t *testing.T) {
 	}
 }
 
+// Test ID: API-12
 // Addresses within one /64 belong to one subscriber, who can pick any of them.
 func TestRateLimitGroupsIPv6By64(t *testing.T) {
 	s := setup(t)
@@ -399,6 +413,7 @@ func TestRateLimitGroupsIPv6By64(t *testing.T) {
 	}
 }
 
+// Test ID: API-13
 // A viewer must not earn a fresh bucket by reconnecting from a new source port.
 func TestRateLimitIgnoresViewerPort(t *testing.T) {
 	s := setup(t)
@@ -416,6 +431,7 @@ func TestRateLimitIgnoresViewerPort(t *testing.T) {
 	}
 }
 
+// Test ID: API-14
 // Each draw writes one metric record naming its rarity and nothing that
 // identifies the request; requests that never reach the generator write none.
 func TestGenerateMetrics(t *testing.T) {

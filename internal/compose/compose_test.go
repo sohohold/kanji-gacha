@@ -29,6 +29,8 @@ func testEngine(t *testing.T) *Engine {
 	}
 	return New(c, d)
 }
+
+// Test ID: GEN-01
 func TestGenerationLimits(t *testing.T) {
 	e := testEngine(t)
 	r, _ := kana.Validate(kana.Input{Mode: "on", Reading: "セイ"})
@@ -76,6 +78,8 @@ func TestGenerationLimits(t *testing.T) {
 		}
 	}
 }
+
+// Test ID: GEN-02
 func TestRarityDistribution(t *testing.T) {
 	e := testEngine(t)
 	rng := rand.New(rand.NewChaCha8([32]byte{2}))
@@ -93,6 +97,7 @@ func TestRarityDistribution(t *testing.T) {
 	}
 }
 
+// Test ID: GEN-03
 // Every glyph keeps exactly one reading character (the phonetic, possibly
 // repeated) and wraps it in radicals chosen independently of the reading.
 func TestPhoneticWithRadicals(t *testing.T) {
@@ -132,6 +137,7 @@ func TestPhoneticWithRadicals(t *testing.T) {
 	}
 }
 
+// Test ID: GEN-04
 // A generation that times out before any worker reports must still return a
 // phonetic with a radical, not a bare existing character.
 func TestFallbackHasRadical(t *testing.T) {
@@ -156,8 +162,7 @@ func TestFallbackHasRadical(t *testing.T) {
 	}
 }
 
-// Every part count a rarity may draw must be reachable within its depth limit
-// for every core size coreSize can pick, or the advertised range is skewed.
+// Test ID: GEN-05
 // The fallback must stay within the configured limits: a one-part rarity gets a
 // bare phonetic, and a stroke limit the radical would break drops the radical.
 func TestFallbackRespectsLimits(t *testing.T) {
@@ -195,6 +200,9 @@ func TestFallbackRespectsLimits(t *testing.T) {
 	}
 }
 
+// Test ID: GEN-06
+// Every part count a rarity may draw must be reachable within its depth limit
+// for every core size coreSize can pick, or the advertised range is skewed.
 func TestRarityPartCountsReachable(t *testing.T) {
 	e := testEngine(t)
 	r, _ := kana.Validate(kana.Input{Mode: "on", Reading: "セイ"})
@@ -220,6 +228,7 @@ func TestRarityPartCountsReachable(t *testing.T) {
 	}
 }
 
+// Test ID: GEN-07
 // config.MaxReachableParts must match what attempt can actually build, so a
 // configuration that passes validation never truncates its part counts.
 func TestMaxReachablePartsMatchesGenerator(t *testing.T) {
@@ -246,6 +255,7 @@ func TestMaxReachablePartsMatchesGenerator(t *testing.T) {
 	}
 }
 
+// Test ID: GEN-08
 func TestRadicalFramesHaveInnerBoxes(t *testing.T) {
 	e := testEngine(t)
 	frames := 0
@@ -263,6 +273,7 @@ func TestRadicalFramesHaveInnerBoxes(t *testing.T) {
 	}
 }
 
+// Test ID: GEN-09
 // A special glyph whose parts are missing falls back to a normal draw, and
 // leaves a log line saying so rather than passing silently.
 func TestMissingSpecialIsLogged(t *testing.T) {

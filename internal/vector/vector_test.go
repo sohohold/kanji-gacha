@@ -5,6 +5,7 @@ import (
 	"testing"
 )
 
+// Test ID: VEC-01
 func TestSimilarity(t *testing.T) {
 	a := Reading("セイ")
 	if math.Abs(Cos(a, a)-1) > 1e-5 {

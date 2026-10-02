@@ -7,6 +7,7 @@ import (
 	"testing"
 )
 
+// Test ID: CFG-01
 func TestRejectInvalidRarityDepth(t *testing.T) {
 	c, err := Load("")
 	if err != nil {
@@ -28,6 +29,7 @@ func TestRejectInvalidRarityDepth(t *testing.T) {
 	}
 }
 
+// Test ID: CFG-02
 func TestRejectUnknownRarityName(t *testing.T) {
 	c, err := Load("")
 	if err != nil {
@@ -47,6 +49,7 @@ func TestRejectUnknownRarityName(t *testing.T) {
 	}
 }
 
+// Test ID: CFG-03
 func TestRejectUnreachablePartCount(t *testing.T) {
 	c, err := Load("")
 	if err != nil {

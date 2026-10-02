@@ -62,6 +62,7 @@ const (
 	water = "2:7:8:42:12:99:23:124:35$2:7:8:20:62:75:71:97:85$2:2:7:63:144:109:118:188:51"
 )
 
+// Test ID: DICT-01
 func TestBuild(t *testing.T) {
 	newest := map[string]string{
 		// 囗 encloses the rest of 国・困・因, so it becomes a ⿴ frame.
@@ -130,6 +131,7 @@ func TestBuild(t *testing.T) {
 	}
 }
 
+// Test ID: DICT-02
 func TestCharOf(t *testing.T) {
 	for n, want := range map[string]string{"u9752-02": "青", "ufa66-j": "辶", "u26c29-07@3": "𦰩", "cdp-8bd0": "", "u9752x": ""} {
 		if got := charOf(n); got != want {
@@ -138,6 +140,7 @@ func TestCharOf(t *testing.T) {
 	}
 }
 
+// Test ID: DICT-03
 func TestHandStrokes(t *testing.T) {
 	for data, want := range map[string]int{
 		box: 3, // 口: ㇑ ㇕ ㇐
