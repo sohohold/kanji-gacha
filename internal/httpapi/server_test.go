@@ -114,6 +114,20 @@ func TestSaveShareOGP(t *testing.T) {
 	}
 }
 
+// problemOf decodes an RFC 9457 body and checks the members every problem
+// carries: the status matches the response, and code says which problem.
+func problemOf(t *testing.T, w *httptest.ResponseRecorder) map[string]any {
+	t.Helper()
+	var p map[string]any
+	if e := json.Unmarshal(w.Body.Bytes(), &p); e != nil {
+		t.Fatalf("%d: body %q is not JSON", w.Code, w.Body.String())
+	}
+	if p["type"] != "about:blank" || p["title"] == "" || p["status"] != float64(w.Code) || p["code"] == "" || p["code"] == nil {
+		t.Fatalf("%d: problem %v", w.Code, p)
+	}
+	return p
+}
+
 type broken struct{}
 
 func (broken) Get(context.Context, string) ([]byte, error) { return nil, errors.New("offline") }
@@ -132,6 +146,17 @@ func TestErrors(t *testing.T) {
 		if w.Code != c.status || w.Header().Get("Cache-Control") != "no-store" {
 			t.Fatalf("%s: %d %s", c.path, w.Code, w.Body.String())
 		}
+		problemOf(t, w)
+	}
+	// A validation error names the field, the code, and where in the
+	// normalized value the bad character sits.
+	p := problemOf(t, call(s, "POST", "/api/v1/glyphs", `{"mode":"on","reading":"せ漢"}`))
+	errs, _ := p["errors"].([]any)
+	if len(errs) != 1 {
+		t.Fatalf("errors %v", p["errors"])
+	}
+	if e := errs[0].(map[string]any); e["field"] != "reading" || e["code"] != "character" || e["position"] != 1.0 || e["normalized"] != "セ漢" {
+		t.Fatalf("validation error %v", e)
 	}
 	s.Store = broken{}
 	w := call(s, "POST", "/api/v1/glyphs", `{"mode":"on","reading":"セイ"}`)
@@ -331,6 +356,7 @@ func TestMethodNotAllowedIsProblem(t *testing.T) {
 		if a := w.Header().Get("Allow"); a != "GET, HEAD" {
 			t.Errorf("%s: allow %q", path, a)
 		}
+		problemOf(t, w)
 	}
 }
 
@@ -356,6 +382,7 @@ func TestAPIMethodNotAllowed(t *testing.T) {
 		if ct := w.Header().Get("Content-Type"); ct != "application/problem+json" {
 			t.Errorf("%s %s: content type %q", c.method, c.path, ct)
 		}
+		problemOf(t, w)
 	}
 	// An API path with no route at all stays a 404.
 	for _, method := range []string{"GET", "POST"} {
@@ -407,6 +434,7 @@ func TestUnknownPathIsNotFound(t *testing.T) {
 		if a := w.Header().Get("Allow"); a != "" {
 			t.Errorf("%s /does-not-exist: advertises Allow %q", method, a)
 		}
+		problemOf(t, w)
 	}
 }
 
