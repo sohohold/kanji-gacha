@@ -81,6 +81,14 @@ digest() {
     --query 'imageDetails[0].imageDigest' --output text 2>/dev/null
 }
 if ! image_digest=$(digest); then
+  # The Lambda adapter base image comes from ECR Public, which caps anonymous
+  # pulls per source IP; shared runner IPs hit that cap as 429 "Data limit
+  # exceeded". Signed-in pulls have a larger allowance. The token is issued
+  # only in us-east-1. Without the permission the build pulls anonymously.
+  if ! aws ecr-public get-login-password --region us-east-1 |
+    docker login --username AWS --password-stdin public.ecr.aws; then
+    echo "::warning::Could not sign in to ECR Public; pulling its images anonymously." >&2
+  fi
   docker buildx build --platform linux/arm64 --provenance=false -t "$repo:$RELEASE" --push .
   image_digest=$(digest)
 fi

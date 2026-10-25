@@ -154,6 +154,11 @@ resource "aws_iam_role_policy" "deploy" {
     { Sid = "StateObjects", Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"], Resource = "${aws_s3_bucket.state.arn}/app/*" },
 
     { Sid = "EcrLogin", Effect = "Allow", Action = "ecr:GetAuthorizationToken", Resource = "*" },
+    # Signs in to ECR Public so pulling the Lambda adapter base image is not
+    # subject to the anonymous per-IP data cap. Pull-only; nothing is pushed there.
+    { Sid = "EcrPublicLogin", Effect = "Allow", Action = "ecr-public:GetAuthorizationToken", Resource = "*" },
+    { Sid = "EcrPublicBearerToken", Effect = "Allow", Action = "sts:GetServiceBearerToken", Resource = "*",
+    Condition = { StringEquals = { "sts:AWSServiceName" = "ecr-public.amazonaws.com" } } },
     { Sid = "EcrRepository", Effect = "Allow", Resource = local.app.ecr, Action = [
       "ecr:CreateRepository", "ecr:DescribeRepositories", "ecr:ListTagsForResource", "ecr:TagResource",
       "ecr:GetRepositoryPolicy", "ecr:SetRepositoryPolicy", "ecr:GetLifecyclePolicy", "ecr:PutLifecyclePolicy",
