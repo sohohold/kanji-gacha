@@ -105,7 +105,7 @@ GitHubは同じconcurrencyグループで待機中の実行を1つしか残さ�
 
 1. `terraform init`。stateに記録された前回のコミット（出力 `release`）が今回のコミットを含んでいれば、古い版で上書きしないよう終了する。CIの完了順が前後しても新しい版が戻されません。同じコミットの再実行は続行します。`release` は下の9の疎通確認まで成功した後に最後のapplyで更新するので、途中で失敗した実行が古いコミットのデプロイを止めることはありません。
 2. 初回のみ、`image_uri` を空にしてECRとバケットを作る。
-3. コミットSHAをタグにarm64イメージを `--provenance=false` でbuild/pushする。タグは上書き不可なので、同じコミットの再実行では既存のイメージを再利用する。
+3. コミットSHAをタグにarm64イメージを `--provenance=false` でbuild/pushする。タグは上書き不可なので、同じコミットの再実行では既存のイメージを再利用する。ビルド前にECR Public（`public.ecr.aws`）へログインする。Lambda Web Adapterのベースイメージはここから取得するが、匿名のpullには送信元IPごとの転送量上限があり、共有ランナーのIPでは `429 Too Many Requests`（`Data limit exceeded`）で失敗することがあるためです。ログインできない場合は警告を出して匿名で続行します。
 4. pushしたdigestのイメージを取り出し、その中の `/app/web` を静的ファイルとして使う。共有HTMLはLambdaがイメージ内の `index.html` から返すため、手元の `web/dist` を使うとハッシュ付きファイル名が食い違います。
 5. ハッシュ付きアセットを先にS3へ追加する（1年・immutable）。旧版のアセットは削除しません。キャッシュされた旧HTMLが参照し続けるためです。
 6. digestを指定して `plan -out` し、削除・置換を含むplanなら中止してからそのplanをapplyする。`base_url` はLambdaに設定済みの値（出力 `configured_base_url`。初回はCloudFrontのドメイン）か `vars.BASE_URL` を必ず渡し、既定値のlocalhostへ戻しません。末尾の `/` は取り除きます。`https://` とホスト名だけのURLでない場合（パス・ポート・クエリ付きや `http://`）と、ホストがCloudFrontのドメインでも別名でもない場合は、何もapplyせずに中止します。
@@ -195,7 +195,7 @@ Lambdaの環境変数 `METRICS_NAMESPACE=KanjiGacha` が設定されていると
 
 ## 権限の設計
 
-デプロイロール（`kanji-gacha-deploy`）の権限は `infra/bootstrap/main.tf` にあります。stateは `app/` 配下だけ、ECR・S3・Lambda・ロググループ・ダッシュボードはこのアプリの名前のARNに限っています。CloudFrontはIDが作成時に決まるためARNで絞れず、作成・更新・無効化の操作だけを許可しています。バケット・リポジトリ・関数・distribution・ダッシュボードの削除権限は与えていません。
+デプロイロール（`kanji-gacha-deploy`）の権限は `infra/bootstrap/main.tf` にあります。stateは `app/` 配下だけ、ECR・S3・Lambda・ロググループ・ダッシュボードはこのアプリの名前のARNに限っています。CloudFrontはIDが作成時に決まるためARNで絞れず、作成・更新・無効化の操作だけを許可しています。ECR Publicはベースイメージのpullに使うログイン（`ecr-public:GetAuthorizationToken` と、ECR Public向けに限った `sts:GetServiceBearerToken`）だけで、pushの権限はありません。バケット・リポジトリ・関数・distribution・ダッシュボードの削除権限は与えていません。
 
 Lambda実行ロールは権限境界 `kanji-gacha-lambda-boundary` を付けたときだけ作成・変更できます。境界は結果バケットの `glyphs/*`・`og/*` の読み書き、そのListBucket、ロググループへの書き込みに限られるため、Terraform経由でインラインポリシーを書き換えてもLambdaの権限はそれ以上に広がりません。`iam:PassRole` はこのロールをLambdaへ渡す場合だけです。境界ポリシーはアプリ構成より先に存在する必要があるので、bootstrapを先に適用してください。
 
