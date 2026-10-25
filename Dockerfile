@@ -9,7 +9,7 @@ COPY web/ ./
 COPY shared/ /src/shared/
 RUN pnpm run build
 
-FROM --platform=$BUILDPLATFORM golang:1.27.1-bookworm AS go
+FROM --platform=$BUILDPLATFORM golang:1.27.3-bookworm AS go
 ARG TARGETOS TARGETARCH
 WORKDIR /src
 COPY go.mod go.sum ./
