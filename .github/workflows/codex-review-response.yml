@@ -68,7 +68,16 @@ jobs:
           echo "comments=$count rounds=$rounds max=$MAX_ROUNDS"
 
           if [ "$count" -eq 0 ]; then
-            gh pr edit "$PR" --add-label codex-passed
+            # 指摘なしのレビューが現在の head を対象にしているときだけ passed とする。
+            # 古いコミットへのレビューが後から届いた場合は、新しい head のレビューを待つ。
+            reviewed=$(jq -r '.commit_id' .codex-review/review.json)
+            head=$(gh pr view "$PR" --json headRefOid --jq '.headRefOid')
+            if [ "$reviewed" = "$head" ]; then
+              gh pr edit "$PR" --add-label codex-passed
+            else
+              echo "review commit $reviewed is not the current head $head"
+              gh pr edit "$PR" --remove-label codex-passed || true
+            fi
             echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
           gh pr edit "$PR" --remove-label codex-passed || true
@@ -144,7 +153,8 @@ jobs:
 
       - name: Post replies and labels
         id: post
-        if: steps.guard.outputs.skip == 'false'
+        # Claude のステップが失敗しても needs-human への切り替えを行うため、暗黙の success() を外す
+        if: ${{ !cancelled() && steps.guard.outputs.skip == 'false' }}
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           BEFORE: ${{ steps.guard.outputs.before }}
