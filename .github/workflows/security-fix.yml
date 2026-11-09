@@ -31,6 +31,7 @@ jobs:
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       MAX_PRS: ${{ inputs.max_prs || vars.SECURITY_FIX_MAX_PRS || '3' }}
       TEST_COMMAND: ${{ vars.TEST_COMMAND || 'go vet ./... && go test ./... && pnpm --dir web run build && pnpm --dir web run test' }}
+      INSTALL_COMMAND: ${{ vars.INSTALL_COMMAND || 'pnpm --dir web install --frozen-lockfile' }}
     steps:
       # GITHUB_TOKEN で push / PR 作成すると後続のワークフロー（CI）が起動しないため、
       # 専用 GitHub App のトークンを使う。App 権限: Contents RW / Pull requests RW / Issues RW
@@ -81,6 +82,13 @@ jobs:
             --exclude scan-results \
             --sarif --output scan-results/semgrep.sarif || true
 
+      # スキャナの失敗（イメージ取得や DB 更新の失敗など）で SARIF が欠けたまま修正に進まない
+      - name: Validate scan results
+        run: |
+          for f in scan-results/trivy.sarif scan-results/semgrep.sarif; do
+            jq -e '.runs | type == "array"' "$f" >/dev/null || { echo "::error::$f is missing or invalid"; exit 1; }
+          done
+
       # Claude がテストの実行と lockfile の更新を行えるよう、CI と同じツールチェーンと依存を用意する
       - uses: actions/setup-go@v7
         with:
@@ -117,7 +125,9 @@ jobs:
             2. `gh pr list --state open --label security-fix --json number,body` で既存 PR を確認し、
                本文の `fix-key:` が一致する単位は対応済みとしてスキップする。
             3. 重大度の高い順に最大 ${{ env.MAX_PRS }} 単位について、以下を 1 単位ずつ行う。
-               a. `git switch ${{ github.event.repository.default_branch }}` の後、`git switch -c security-fix/<fix-key>`。
+               a. `git switch ${{ github.event.repository.default_branch }}` の後、`git switch -c security-fix/<fix-key>` を実行し、
+                  `${{ env.INSTALL_COMMAND }}` で依存をデフォルトブランチの lockfile どおりに入れ直す
+                  （前の単位で更新・破棄した依存が node_modules に残るため）。
                b. 指摘を解消する最小限の変更を行う。無関係なリファクタリングや整形はしない。
                   依存の更新は脆弱性が解消される最小のバージョンを選び、lockfile はパッケージマネージャのコマンドで更新する。
                   メジャー更新が必要な場合は破壊的変更に追従し、その内容を PR 本文に明記する。

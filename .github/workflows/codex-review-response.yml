@@ -67,17 +67,18 @@ jobs:
             --jq '.[] | select(.user.login == "chatgpt-codex-connector[bot]") | .id' | wc -l)
           echo "comments=$count rounds=$rounds max=$MAX_ROUNDS"
 
+          # 古いコミットへのレビューは、ラベル付けにも Claude の修正にも使わない。
+          # Codex は push ごとに再レビューするので、新しい head のレビューを待つ。
+          reviewed=$(jq -r '.commit_id' .codex-review/review.json)
+          head=$(gh pr view "$PR" --json headRefOid --jq '.headRefOid')
+          if [ "$reviewed" != "$head" ]; then
+            echo "review commit $reviewed is not the current head $head; skipping"
+            gh pr edit "$PR" --remove-label codex-passed || true
+            echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+
           if [ "$count" -eq 0 ]; then
-            # 指摘なしのレビューが現在の head を対象にしているときだけ passed とする。
-            # 古いコミットへのレビューが後から届いた場合は、新しい head のレビューを待つ。
-            reviewed=$(jq -r '.commit_id' .codex-review/review.json)
-            head=$(gh pr view "$PR" --json headRefOid --jq '.headRefOid')
-            if [ "$reviewed" = "$head" ]; then
-              gh pr edit "$PR" --add-label codex-passed
-            else
-              echo "review commit $reviewed is not the current head $head"
-              gh pr edit "$PR" --remove-label codex-passed || true
-            fi
+            gh pr edit "$PR" --add-label codex-passed
             echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
           gh pr edit "$PR" --remove-label codex-passed || true
