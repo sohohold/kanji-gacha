@@ -82,6 +82,21 @@ jobs:
             --exclude scan-results \
             --sarif --output scan-results/semgrep.sarif || true
 
+      # 指摘の件数と ruleId だけを Job Summary に出す（シークレットの値は出さない）
+      - name: Summarize scan results
+        run: |
+          {
+            echo "## スキャン結果"
+            for f in scan-results/trivy.sarif scan-results/semgrep.sarif; do
+              if jq -e '.runs | type == "array"' "$f" >/dev/null 2>&1; then
+                echo "### $(basename "$f")：$(jq '[.runs[].results[]?] | length' "$f") 件"
+                jq -r '[.runs[].results[]? | .ruleId // "(ruleId なし)"] | group_by(.) | map("- `\(.[0])` × \(length)") | .[]' "$f"
+              else
+                echo "### $(basename "$f")：読み込めません"
+              fi
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
       # スキャナの失敗（イメージ取得や DB 更新の失敗など）で SARIF が欠けたまま修正に進まない
       - name: Validate scan results
         run: |
@@ -107,6 +122,7 @@ jobs:
           pnpm --dir web install --frozen-lockfile
 
       - name: Claude Code — fix and open PRs
+        id: claude
         uses: anthropics/claude-code-action@v1
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -151,6 +167,25 @@ jobs:
             --max-turns 150
             --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git switch:*),Bash(git branch:*),Bash(git restore:*),Bash(git clean -fd),Bash(git add:*),Bash(git commit:*),Bash(git push -u origin HEAD),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(gh pr list:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(gh pr edit:*),${{ vars.CLAUDE_TEST_TOOLS || 'Bash(go:*),Bash(pnpm:*)' }}"
             --disallowedTools "Bash(git push --force:*),Bash(git push -f:*),Bash(gh pr merge:*),Bash(gh api:*)"
+
+      # Claude の最終報告（作成した PR・スキップ・破棄）と拒否されたツールを Job Summary に出す。
+      # show_full_output は会話の全文がログに残るため使わない。
+      - name: Summarize Claude result
+        if: ${{ !cancelled() }}
+        env:
+          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file || format('{0}/claude-execution-output.json', runner.temp) }}
+        run: |
+          {
+            echo "## Claude の実行結果"
+            if jq -e 'type == "array"' "$EXECUTION_FILE" >/dev/null 2>&1; then
+              jq -r '[.[] | select(.type == "result")] | last // {} |
+                "ターン数: \(.num_turns // "不明")\n\n### 拒否されたツール\n" +
+                ([.permission_denials[]? | "- `\(.tool_name)` \(.tool_input.command // "" | .[0:200])"] | if length == 0 then "なし" else join("\n") end) +
+                "\n\n### 最終報告\n\(.result // "(最終報告なし)")"' "$EXECUTION_FILE"
+            else
+              echo "実行結果のファイルを読み込めませんでした。"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # Codex の自動レビューが bot 作成の PR で起動しない場合のみ使う（vars.CODEX_TRIGGER_MODE=comment）。
       # Codex は ChatGPT と連携した人間のアカウントからの `@codex review` を受け付けるため、
