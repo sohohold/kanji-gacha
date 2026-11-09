@@ -1,0 +1,156 @@
+# 脆弱性スキャン → Claude Code が修正ブランチを切って PR を作成する。
+# マージは人が行う前提（main のブランチ保護で「人間の承認1件以上」を必須にし、
+# この App を bypass 対象に入れないこと。PR 作成者の App は自分の PR を承認できない）。
+name: security-fix
+
+on:
+  schedule:
+    - cron: "17 18 * * 0" # 毎週月曜 03:17 JST
+  workflow_dispatch:
+    inputs:
+      max_prs:
+        description: "1回の実行で作る PR の上限"
+        default: "3"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-fix
+  cancel-in-progress: false
+
+jobs:
+  scan-and-fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GH_REPO: ${{ github.repository }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      MAX_PRS: ${{ inputs.max_prs || vars.SECURITY_FIX_MAX_PRS || '3' }}
+      TEST_COMMAND: ${{ vars.TEST_COMMAND || 'go vet ./... && go test ./... && pnpm --dir web run build && pnpm --dir web run test' }}
+    steps:
+      # GITHUB_TOKEN で push / PR 作成すると後続のワークフロー（CI）が起動しないため、
+      # 専用 GitHub App のトークンを使う。App 権限: Contents RW / Pull requests RW / Issues RW
+      - name: Issue GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.FIXER_APP_ID }}
+          private-key: ${{ secrets.FIXER_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 0
+
+      - name: Record start time
+        id: start
+        run: echo "ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          mkdir -p scan-results
+          echo "scan-results/" >> .git/info/exclude
+          gh label create security-fix --color B60205 --description "Claude による脆弱性修正" --force
+          gh label create needs-human --color FBCA04 --description "人の判断が必要" --force
+          gh label create codex-passed --color 0E8A16 --description "Codex レビューで指摘なし" --force
+
+      # 依存ライブラリ / IaC / シークレット。イメージはダイジェスト固定を推奨（vars.TRIVY_IMAGE で差し替え）
+      - name: Trivy (dependencies / misconfig / secrets)
+        env:
+          TRIVY_IMAGE: ${{ vars.TRIVY_IMAGE || 'aquasec/trivy:latest' }}
+        run: |
+          docker run --rm -v "$PWD":/src -w /src "$TRIVY_IMAGE" fs \
+            --scanners vuln,misconfig,secret \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed \
+            --skip-dirs scan-results \
+            --format sarif --output scan-results/trivy.sarif . || true
+
+      # アプリケーションコード
+      - name: Semgrep (code)
+        run: |
+          pip install --quiet semgrep
+          semgrep scan --config "${{ vars.SEMGREP_CONFIG || 'auto' }}" \
+            --severity ERROR \
+            --exclude scan-results \
+            --sarif --output scan-results/semgrep.sarif || true
+
+      # Claude がテストの実行と lockfile の更新を行えるよう、CI と同じツールチェーンと依存を用意する
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: Install dependencies
+        run: |
+          go mod download
+          pnpm --dir web install --frozen-lockfile
+
+      - name: Claude Code — fix and open PRs
+        uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ steps.app-token.outputs.token }}
+          prompt: |
+            あなたはリポジトリ ${{ github.repository }} の脆弱性修正担当です。
+            scan-results/trivy.sarif（依存・設定・シークレット）と scan-results/semgrep.sarif（コード）を読み、
+            修正 PR を作成してください。デフォルトブランチは ${{ github.event.repository.default_branch }} です。
+
+            ## 手順
+            1. 両 SARIF の全指摘を読み、誤検知（テストコード・到達不能コード・既に緩和済み）を除外する。
+               同じ根本原因で解消するもの（同一パッケージの更新、同一関数の修正）は 1 つの修正単位にまとめる。
+               各単位に fix-key を付ける。形式: `dep-<package>-<CVE ID>` または `code-<ruleId 末尾>-<ファイル名>`（英小文字・数字・ハイフンのみ）。
+            2. `gh pr list --state open --label security-fix --json number,body` で既存 PR を確認し、
+               本文の `fix-key:` が一致する単位は対応済みとしてスキップする。
+            3. 重大度の高い順に最大 ${{ env.MAX_PRS }} 単位について、以下を 1 単位ずつ行う。
+               a. `git switch ${{ github.event.repository.default_branch }}` の後、`git switch -c security-fix/<fix-key>`。
+               b. 指摘を解消する最小限の変更を行う。無関係なリファクタリングや整形はしない。
+                  依存の更新は脆弱性が解消される最小のバージョンを選び、lockfile はパッケージマネージャのコマンドで更新する。
+                  メジャー更新が必要な場合は破壊的変更に追従し、その内容を PR 本文に明記する。
+               c. 可能であれば、脆弱性が再現しないことを確認するテストを追加する。
+               d. `${{ env.TEST_COMMAND }}` を実行する。失敗が今回の変更に起因し、修正できない場合はその単位を破棄し
+                  （`git switch ${{ github.event.repository.default_branch }}` → `git branch -D security-fix/<fix-key>`）、次の単位へ進む。
+               e. 変更したファイルだけを `git add` し、`fix(security): <要約>` でコミットし、`git push -u origin HEAD`。
+               f. `gh pr create --base ${{ github.event.repository.default_branch }} --label security-fix` で PR を作成する。
+                  本文には次を含める: 対象の指摘（ruleId / CVE / ファイル:行）、原因、修正内容、実行したテストと結果、
+                  残るリスクとレビューで特に見てほしい点、最終行に `fix-key: <fix-key>`。
+            4. 最後に、作成した PR、スキップした単位、破棄した単位とその理由を簡潔に出力する。
+
+            ## 禁止事項
+            - force push、他ブランチへの push、PR のマージ・承認、既存 PR の変更。
+            - .github/ 配下、CI 設定、テストの削除や skip 化。
+            - scan-results/ のコミット。シークレットの値を PR やコメントに書くこと
+              （シークレット検出は「どのファイルの何行目か」と「ローテーションが必要」とだけ書き、needs-human ラベルを付ける）。
+          claude_args: >-
+            --max-turns 150
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git switch:*),Bash(git branch:*),Bash(git add:*),Bash(git commit:*),Bash(git push -u origin HEAD),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(gh pr list:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(gh pr edit:*),${{ vars.CLAUDE_TEST_TOOLS || 'Bash(go:*),Bash(pnpm:*)' }}"
+            --disallowedTools "Bash(git push --force:*),Bash(git push -f:*),Bash(gh pr merge:*),Bash(gh api:*)"
+
+      # Codex の自動レビューが bot 作成の PR で起動しない場合のみ使う（vars.CODEX_TRIGGER_MODE=comment）。
+      # Codex は ChatGPT と連携した人間のアカウントからの `@codex review` を受け付けるため、
+      # CODEX_TRIGGER_TOKEN にはそのユーザーの fine-grained PAT（Pull requests: RW のみ）を入れる。
+      - name: Request Codex review
+        if: vars.CODEX_TRIGGER_MODE == 'comment'
+        env:
+          GH_TOKEN: ${{ secrets.CODEX_TRIGGER_TOKEN }}
+          START: ${{ steps.start.outputs.ts }}
+        run: |
+          gh pr list --state open --label security-fix --json number,createdAt \
+            --jq ".[] | select(.createdAt >= \"$START\") | .number" |
+          while read -r n; do
+            gh pr comment "$n" --body "@codex review"
+          done
