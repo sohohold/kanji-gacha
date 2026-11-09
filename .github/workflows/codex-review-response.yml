@@ -165,7 +165,8 @@ jobs:
           after=$(git rev-parse "origin/$HEAD_REF")
           if [ "$after" != "$BEFORE" ]; then echo "pushed=true" >> "$GITHUB_OUTPUT"; else echo "pushed=false" >> "$GITHUB_OUTPUT"; fi
 
-          needs_human=$(jq -r '.needs_human // true' .codex-review/result.json 2>/dev/null || echo true)
+          # jq の // は false も置き換えるため、明示的な false 以外を true として扱う
+          needs_human=$(jq -r 'if .needs_human == false then "false" else "true" end' .codex-review/result.json 2>/dev/null || echo true)
           summary=$(jq -r '.summary // "Claude の実行結果を取得できませんでした。"' .codex-review/result.json 2>/dev/null || echo "Claude の実行結果を取得できませんでした。")
           if [ "$needs_human" = "true" ]; then
             gh pr edit "$PR" --add-label needs-human

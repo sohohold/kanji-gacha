@@ -123,7 +123,9 @@ jobs:
                   メジャー更新が必要な場合は破壊的変更に追従し、その内容を PR 本文に明記する。
                c. 可能であれば、脆弱性が再現しないことを確認するテストを追加する。
                d. `${{ env.TEST_COMMAND }}` を実行する。失敗が今回の変更に起因し、修正できない場合はその単位を破棄し
-                  （`git switch ${{ github.event.repository.default_branch }}` → `git branch -D security-fix/<fix-key>`）、次の単位へ進む。
+                  （`git restore --staged --worktree .` → `git clean -fd` → `git switch ${{ github.event.repository.default_branch }}`
+                  → `git branch -D security-fix/<fix-key>`）、次の単位へ進む。`git switch` は未コミットの変更を持ち越すため、
+                  必ず作業ツリーを戻してから切り替えること。
                e. 変更したファイルだけを `git add` し、`fix(security): <要約>` でコミットし、`git push -u origin HEAD`。
                f. `gh pr create --base ${{ github.event.repository.default_branch }} --label security-fix` で PR を作成する。
                   本文には次を含める: 対象の指摘（ruleId / CVE / ファイル:行）、原因、修正内容、実行したテストと結果、
@@ -137,7 +139,7 @@ jobs:
               （シークレット検出は「どのファイルの何行目か」と「ローテーションが必要」とだけ書き、needs-human ラベルを付ける）。
           claude_args: >-
             --max-turns 150
-            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git switch:*),Bash(git branch:*),Bash(git add:*),Bash(git commit:*),Bash(git push -u origin HEAD),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(gh pr list:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(gh pr edit:*),${{ vars.CLAUDE_TEST_TOOLS || 'Bash(go:*),Bash(pnpm:*)' }}"
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git switch:*),Bash(git branch:*),Bash(git restore:*),Bash(git clean -fd),Bash(git add:*),Bash(git commit:*),Bash(git push -u origin HEAD),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(gh pr list:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(gh pr edit:*),${{ vars.CLAUDE_TEST_TOOLS || 'Bash(go:*),Bash(pnpm:*)' }}"
             --disallowedTools "Bash(git push --force:*),Bash(git push -f:*),Bash(gh pr merge:*),Bash(gh api:*)"
 
       # Codex の自動レビューが bot 作成の PR で起動しない場合のみ使う（vars.CODEX_TRIGGER_MODE=comment）。
