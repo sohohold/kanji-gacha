@@ -28,6 +28,7 @@ COPY --from=web /src/web/dist /app/web
 # The base image's /home/nonroot is 0700 for uid 65532, so starting there
 # fails with Runtime.InvalidEntrypoint; /app is readable by any user.
 WORKDIR /app
+USER nonroot
 ENV PORT=8080 WEB_DIR=/app/web DATA_DIR=/tmp/data AWS_LWA_READINESS_CHECK_PATH=/healthz
 EXPOSE 8080
 ENTRYPOINT ["/app/api"]
